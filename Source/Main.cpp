@@ -1,8 +1,14 @@
 #define VOLK_IMPLEMENTATION
 #include <volk.h>
 
+#define VMA_IMPLEMENTATION
+#include <vk_mem_alloc.h>
+
 #include <spdlog/spdlog.h>
 #include <GLFW/glfw3.h>
+
+#include <fstream>
+#include <algorithm>
 
 const uint32_t kWindowWidth  = 1920u;
 const uint32_t kWindowHeight = 1080u;
@@ -12,8 +18,14 @@ constexpr const std::chrono::duration<double> kTargetFrameDuration(1.0 / 60.0);
 
 const uint32_t kMaxFramesInFlight = 3u;
 
-void Check(VkResult a, const char* b) { if (a != VK_SUCCESS) { spdlog::critical(b); exit(1); } }
+void Check(VkResult a, const char* b) { if (a != VK_SUCCESS) { spdlog::critical(b); exit(a); } }
 void Check(bool     a, const char* b) { if (a != true)       { spdlog::critical(b); exit(1); } }
+
+enum ShaderID
+{
+    FullscreenTriangleVert,
+    SeascapeFrag
+};
 
 bool SelectVulkanPhysicalDevice(const VkInstance& vkInstance, const std::vector<const char*> requiredExtensions, VkPhysicalDevice& vkPhysicalDevice)
 {    
@@ -87,11 +99,13 @@ bool CreateVulkanLogicalDevice(const VkPhysicalDevice& vkPhysicalDevice, const s
     vkGraphicsQueueCreateInfo.queueCount       = 1u;
     vkGraphicsQueueCreateInfo.pQueuePriorities = &graphicsQueuePriority;
 
-    VkPhysicalDeviceVulkan13Features vulkan13Features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES };
-    VkPhysicalDeviceVulkan12Features vulkan12Features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES };
-    VkPhysicalDeviceVulkan11Features vulkan11Features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES };
-    VkPhysicalDeviceFeatures2        vulkan10Features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2          };
+    VkPhysicalDeviceShaderObjectFeaturesEXT shaderObjectFeature = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_OBJECT_FEATURES_EXT };
+    VkPhysicalDeviceVulkan13Features        vulkan13Features    = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES        };
+    VkPhysicalDeviceVulkan12Features        vulkan12Features    = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES        };
+    VkPhysicalDeviceVulkan11Features        vulkan11Features    = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES        };
+    VkPhysicalDeviceFeatures2               vulkan10Features    = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2                 };
 
+    vulkan13Features.pNext = &shaderObjectFeature;
     vulkan12Features.pNext = &vulkan13Features;
     vulkan11Features.pNext = &vulkan12Features;
     vulkan10Features.pNext = &vulkan11Features;
@@ -106,6 +120,12 @@ bool CreateVulkanLogicalDevice(const VkPhysicalDevice& vkPhysicalDevice, const s
 
         if (!strcmp(requiredExtension, VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME) && vulkan13Features.synchronization2 != VK_TRUE)
             return false;
+
+        if (!strcmp(requiredExtension, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME) && vulkan13Features.dynamicRendering != VK_TRUE)
+            return false;
+
+        if (!strcmp(requiredExtension, VK_EXT_SHADER_OBJECT_EXTENSION_NAME) && shaderObjectFeature.shaderObject != VK_TRUE)
+            return false;
     }
 
     VkDeviceCreateInfo vkLogicalDeviceCreateInfo = { VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
@@ -116,6 +136,25 @@ bool CreateVulkanLogicalDevice(const VkPhysicalDevice& vkPhysicalDevice, const s
     vkLogicalDeviceCreateInfo.ppEnabledExtensionNames = requiredExtensions.data();
 
     return vkCreateDevice(vkPhysicalDevice, &vkLogicalDeviceCreateInfo, nullptr, &vkLogicalDevice) == VK_SUCCESS;
+}
+
+bool LoadByteCode(const char* filePath, std::vector<char>& byteCode)
+{
+    std::fstream file(std::format("..\\Shaders\\Compiled\\{}", filePath), std::ios::in | std::ios::binary);
+
+    if (!file.is_open())
+        return false;
+    
+    file.seekg(0, std::ios::end);
+    auto byteCodeSize = file.tellg();
+    file.seekg(0, std::ios::beg);
+
+    byteCode.resize(byteCodeSize);
+    file.read(byteCode.data(), byteCodeSize);
+
+    file.close();
+
+    return true;
 }
 
 bool GetVulkanQueueIndices(const VkInstance& vkInstance, const VkPhysicalDevice& vkPhysicalDevice, uint32_t& vkQueueIndexGraphics)
@@ -190,6 +229,8 @@ int main()
         requiredDeviceExtensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
         requiredDeviceExtensions.push_back(VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME);
         requiredDeviceExtensions.push_back(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
+        requiredDeviceExtensions.push_back(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME);
+        requiredDeviceExtensions.push_back(VK_EXT_SHADER_OBJECT_EXTENSION_NAME);
     }
 
     VkPhysicalDevice vkPhysicalDevice;
@@ -313,15 +354,73 @@ int main()
     VkQueue vkGraphicsQueue;
     vkGetDeviceQueue(vkLogicalDevice, vkQueueIndexGraphics, 0u, &vkGraphicsQueue);
 
+    VmaVulkanFunctions vmaVulkanFunctions = {};
+    vmaVulkanFunctions.vkGetInstanceProcAddr = vkGetInstanceProcAddr;
+    vmaVulkanFunctions.vkGetDeviceProcAddr   = vkGetDeviceProcAddr;
+    
+    VmaAllocatorCreateInfo vmaAllocatorInfo = {};
+    vmaAllocatorInfo.flags            = VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT;
+    vmaAllocatorInfo.vulkanApiVersion = VK_API_VERSION_1_2;
+    vmaAllocatorInfo.physicalDevice   = vkPhysicalDevice;
+    vmaAllocatorInfo.device           = vkLogicalDevice;
+    vmaAllocatorInfo.instance         = vkInstance;
+    vmaAllocatorInfo.pVulkanFunctions = &vmaVulkanFunctions;
+    
+    VmaAllocator vkMemoryAllocator;
+    Check(vmaCreateAllocator(&vmaAllocatorInfo, &vkMemoryAllocator), "Failed to create Vulkan Memory Allocator.");
+
     spdlog::info("Initialized Vulkan.");
+
+    // Load Shaders
+    // ------------------------------------------------
+
+    std::map<ShaderID, VkShaderEXT> vkShaderMap;
+
+    auto LoadShader = [&](ShaderID shaderID, const char* filePath, VkShaderCreateInfoEXT vkShaderInfo)
+    {
+        std::vector<char> shaderByteCode;
+        if (!LoadByteCode(filePath, shaderByteCode))
+        {
+            spdlog::critical("Failed to read shader bytecode: {}", filePath);
+            exit(1);
+        }
+
+        vkShaderInfo.pName    = "Main";
+        vkShaderInfo.pCode    = shaderByteCode.data();
+        vkShaderInfo.codeSize = shaderByteCode.size();
+        vkShaderInfo.codeType = VK_SHADER_CODE_TYPE_SPIRV_EXT;
+
+        VkShaderEXT vkShader;
+        Check(vkCreateShadersEXT(vkLogicalDevice, 1u, &vkShaderInfo, nullptr, &vkShader), std::format("Failed to load Vulkan Shader: {}", filePath).c_str());
+
+        if (vkShaderMap.contains(shaderID))
+        {
+            spdlog::critical("Tried to store a Vulkan Shader into an existing shader slot.");
+            exit(1);
+        }
+
+        vkShaderMap[shaderID] = vkShader;
+    };
+
+    VkShaderCreateInfoEXT fullScreenTriangleShaderInfo = { VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT };
+    {
+        fullScreenTriangleShaderInfo.stage     = VK_SHADER_STAGE_VERTEX_BIT;
+        fullScreenTriangleShaderInfo.nextStage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    }
+    LoadShader(ShaderID::FullscreenTriangleVert, "FullscreenTriangle.vert.spv", fullScreenTriangleShaderInfo);
+    
+    VkShaderCreateInfoEXT seascapeShaderInfo = { VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT };
+    {
+        seascapeShaderInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    }
+    LoadShader(ShaderID::SeascapeFrag, "Seascape.frag.spv", seascapeShaderInfo);
+
 
     // Command Recording
     // ------------------------------------------------
 
     auto RecordCommands = [&](VkCommandBuffer vkCurrentCmd, uint32_t vkCurrentSwapchainImageIndex)
     {
-        spdlog::info("Recording command buffer...");
-
         // Configure Resource Barriers
         // --------------------------------------------
 
@@ -457,6 +556,11 @@ int main()
     glfwTerminate();
 
     vkDeviceWaitIdle(vkLogicalDevice);
+
+    vmaDestroyAllocator(vkMemoryAllocator);
+
+    for (auto& shader : vkShaderMap)
+        vkDestroyShaderEXT(vkLogicalDevice, shader.second, nullptr);
 
     for (uint32_t frameIndex = 0u; frameIndex < kMaxFramesInFlight; frameIndex++)
     {
