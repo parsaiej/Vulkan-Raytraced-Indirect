@@ -14,7 +14,7 @@ const uint32_t kWindowWidth  = 1920u;
 const uint32_t kWindowHeight = 1080u;
 
 // Target 60Hz. 
-constexpr const std::chrono::duration<double> kTargetFrameDuration(1.0 / 60.0);
+constexpr const std::chrono::duration<double> kTargetFrameDuration(1.0 / 240.0);
 
 const uint32_t kMaxFramesInFlight = 3u;
 
@@ -157,6 +157,55 @@ bool LoadByteCode(const char* filePath, std::vector<char>& byteCode)
     return true;
 }
 
+void SetDefaultRenderState(VkCommandBuffer commandBuffer)
+{
+    static VkColorComponentFlags s_DefaultWriteMask =   VK_COLOR_COMPONENT_R_BIT | 
+                                                        VK_COLOR_COMPONENT_G_BIT | 
+                                                        VK_COLOR_COMPONENT_B_BIT | 
+                                                        VK_COLOR_COMPONENT_A_BIT;
+
+    static VkColorBlendEquationEXT s_DefaultColorBlend = 
+    {
+        // Color
+        VK_BLEND_FACTOR_ONE,
+        VK_BLEND_FACTOR_ZERO,
+        VK_BLEND_OP_ADD,
+
+        // Alpha
+        VK_BLEND_FACTOR_ONE,
+        VK_BLEND_FACTOR_ZERO,
+        VK_BLEND_OP_ADD,
+    };
+
+    static VkBool32     s_DefaultBlendEnable = VK_FALSE;
+    static VkViewport   s_DefaultViewport    = { 0, 0, kWindowWidth, kWindowHeight, 0.0, 1.0 };
+    static VkRect2D     s_DefaultScissor     = { {0, 0}, {kWindowWidth, kWindowHeight} };
+    static VkSampleMask s_DefaultSampleMask  = 0xFFFFFFFF;
+
+    vkCmdSetColorBlendEnableEXT       (commandBuffer, 0u, 1u, &s_DefaultBlendEnable);
+    vkCmdSetColorWriteMaskEXT         (commandBuffer, 0u, 1u, &s_DefaultWriteMask);
+    vkCmdSetColorBlendEquationEXT     (commandBuffer, 0u, 1u, &s_DefaultColorBlend);
+    vkCmdSetViewportWithCountEXT      (commandBuffer, 1u, &s_DefaultViewport);
+    vkCmdSetScissorWithCountEXT       (commandBuffer, 1u, &s_DefaultScissor);
+    vkCmdSetPrimitiveRestartEnableEXT (commandBuffer, VK_FALSE);
+    vkCmdSetRasterizerDiscardEnableEXT(commandBuffer, VK_FALSE);
+    vkCmdSetAlphaToOneEnableEXT       (commandBuffer, VK_FALSE);
+    vkCmdSetAlphaToCoverageEnableEXT  (commandBuffer, VK_FALSE);
+    vkCmdSetStencilTestEnableEXT      (commandBuffer, VK_FALSE);
+    vkCmdSetDepthTestEnableEXT        (commandBuffer, VK_FALSE);
+    vkCmdSetDepthBiasEnableEXT        (commandBuffer, VK_FALSE);
+    vkCmdSetDepthWriteEnableEXT       (commandBuffer, VK_FALSE);
+    vkCmdSetDepthBoundsTestEnable     (commandBuffer, VK_FALSE);
+    vkCmdSetDepthClampEnableEXT       (commandBuffer, VK_FALSE);
+    vkCmdSetLogicOpEnableEXT          (commandBuffer, VK_FALSE);
+    vkCmdSetRasterizationSamplesEXT   (commandBuffer, VK_SAMPLE_COUNT_1_BIT);
+    vkCmdSetSampleMaskEXT             (commandBuffer, VK_SAMPLE_COUNT_1_BIT, &s_DefaultSampleMask);
+    vkCmdSetFrontFaceEXT              (commandBuffer, VK_FRONT_FACE_CLOCKWISE);
+    vkCmdSetPolygonModeEXT            (commandBuffer, VK_POLYGON_MODE_FILL);
+    vkCmdSetCullModeEXT               (commandBuffer, VK_CULL_MODE_BACK_BIT);
+    vkCmdSetPrimitiveTopologyEXT      (commandBuffer, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+}
+
 bool GetVulkanQueueIndices(const VkInstance& vkInstance, const VkPhysicalDevice& vkPhysicalDevice, uint32_t& vkQueueIndexGraphics)
 {
     vkQueueIndexGraphics = UINT_MAX;
@@ -264,7 +313,7 @@ int main()
 
     VkSwapchainCreateInfoKHR vkSwapchainCreateInfo = { VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR };
     vkSwapchainCreateInfo.surface          = vkSurface;
-    vkSwapchainCreateInfo.minImageCount    = vkSurfaceProperties.minImageCount;
+    vkSwapchainCreateInfo.minImageCount    = vkSurfaceProperties.minImageCount + 1;
     vkSwapchainCreateInfo.imageExtent      = vkSurfaceProperties.currentExtent;
     vkSwapchainCreateInfo.imageArrayLayers = vkSurfaceProperties.maxImageArrayLayers;
     vkSwapchainCreateInfo.imageUsage       = vkSurfaceProperties.supportedUsageFlags;
@@ -402,19 +451,43 @@ int main()
         vkShaderMap[shaderID] = vkShader;
     };
 
+    VkPushConstantRange vkGlobalPushConstants;
+    {
+        vkGlobalPushConstants.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        vkGlobalPushConstants.offset     = 0u;
+        vkGlobalPushConstants.size       = sizeof(float);
+    }
+    
+    VkPipelineLayoutCreateInfo vkPipelineLayoutInfo = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
+    {
+        vkPipelineLayoutInfo.setLayoutCount         = 0u;
+        vkPipelineLayoutInfo.pSetLayouts            = nullptr;
+        vkPipelineLayoutInfo.pushConstantRangeCount = 1u;
+        vkPipelineLayoutInfo.pPushConstantRanges    = &vkGlobalPushConstants;
+    }
+    VkPipelineLayout vkPipelineLayout;
+    vkCreatePipelineLayout(vkLogicalDevice, &vkPipelineLayoutInfo, nullptr, &vkPipelineLayout);
+
     VkShaderCreateInfoEXT fullScreenTriangleShaderInfo = { VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT };
     {
         fullScreenTriangleShaderInfo.stage     = VK_SHADER_STAGE_VERTEX_BIT;
         fullScreenTriangleShaderInfo.nextStage = VK_SHADER_STAGE_FRAGMENT_BIT;
+        
+        fullScreenTriangleShaderInfo.pushConstantRangeCount = 1u;
+        fullScreenTriangleShaderInfo.pPushConstantRanges    = &vkGlobalPushConstants;
     }
     LoadShader(ShaderID::FullscreenTriangleVert, "FullscreenTriangle.vert.spv", fullScreenTriangleShaderInfo);
     
     VkShaderCreateInfoEXT seascapeShaderInfo = { VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT };
     {
         seascapeShaderInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+        
+        seascapeShaderInfo.pushConstantRangeCount = 1u;
+        seascapeShaderInfo.pPushConstantRanges    = &vkGlobalPushConstants;
     }
     LoadShader(ShaderID::SeascapeFrag, "Seascape.frag.spv", seascapeShaderInfo);
 
+    float globalTime = 0.0;
 
     // Command Recording
     // ------------------------------------------------
@@ -443,23 +516,68 @@ int main()
 
         {   
             vkImageBarrier.oldLayout     = VK_IMAGE_LAYOUT_UNDEFINED;
-            vkImageBarrier.newLayout     = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            vkImageBarrier.newLayout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
             vkImageBarrier.srcAccessMask = VK_ACCESS_2_NONE;
-            vkImageBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            vkImageBarrier.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
             vkImageBarrier.srcStageMask  = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
-            vkImageBarrier.dstStageMask  = VK_PIPELINE_STAGE_TRANSFER_BIT;
+            vkImageBarrier.dstStageMask  = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
         }
         vkCmdPipelineBarrier2(vkCurrentCmd, &vkDependencyInfo);
 
-        VkClearColorValue clearColor = { { 0.25, 0.5, 1.0, 1.0 } };
-        vkCmdClearColorImage(vkCurrentCmd, vkSwapchainImages[vkCurrentSwapchainImageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clearColor, 1u, &vkSwapchainImageSubresourceRange);
+        VkRenderingAttachmentInfo colorAttachmentInfo = { VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
+        {
+            colorAttachmentInfo.loadOp      = VK_ATTACHMENT_LOAD_OP_CLEAR;
+            colorAttachmentInfo.storeOp     = VK_ATTACHMENT_STORE_OP_STORE;
+            colorAttachmentInfo.clearValue  = {{{ 0.25, 0.5, 1.0, 1.0 }}};
+            colorAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            colorAttachmentInfo.imageView   = vkSwapchainImageViews[vkCurrentSwapchainImageIndex];
+        } 
+
+        VkRenderingInfo vkRenderingInfo = { VK_STRUCTURE_TYPE_RENDERING_INFO };
+        {
+            vkRenderingInfo.colorAttachmentCount = 1u;
+            vkRenderingInfo.pColorAttachments    = &colorAttachmentInfo;
+            vkRenderingInfo.pDepthAttachment     = VK_NULL_HANDLE;
+            vkRenderingInfo.pStencilAttachment   = VK_NULL_HANDLE;
+            vkRenderingInfo.layerCount           = 1u;
+            vkRenderingInfo.renderArea           = { {0, 0}, { kWindowWidth, kWindowHeight } };
+        }
+        vkCmdBeginRendering(vkCurrentCmd, &vkRenderingInfo);
+
+        VkShaderStageFlagBits vkGraphicsShaderStageBits[5] =
+        {
+            VK_SHADER_STAGE_VERTEX_BIT,
+            VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT,
+            VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT,
+            VK_SHADER_STAGE_GEOMETRY_BIT,
+            VK_SHADER_STAGE_FRAGMENT_BIT
+        };
+
+        VkShaderEXT vkGraphicsShaders[5] =
+        {
+            vkShaderMap[ShaderID::FullscreenTriangleVert],
+            VK_NULL_HANDLE,
+            VK_NULL_HANDLE,
+            VK_NULL_HANDLE,
+            vkShaderMap[ShaderID::SeascapeFrag]
+        };
+
+        vkCmdBindShadersEXT(vkCurrentCmd, 5u, vkGraphicsShaderStageBits, vkGraphicsShaders);
+
+        SetDefaultRenderState(vkCurrentCmd);
+
+        vkCmdPushConstants(vkCurrentCmd, vkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0u, sizeof(float), &globalTime);
+
+        vkCmdDraw(vkCurrentCmd, 3u, 1u, 0u, 0u);
+
+        vkCmdEndRendering(vkCurrentCmd);
 
         {
-            vkImageBarrier.oldLayout     = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            vkImageBarrier.oldLayout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
             vkImageBarrier.newLayout     = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-            vkImageBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            vkImageBarrier.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
             vkImageBarrier.dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT;
-            vkImageBarrier.srcStageMask  = VK_PIPELINE_STAGE_TRANSFER_BIT;
+            vkImageBarrier.srcStageMask  = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
             vkImageBarrier.dstStageMask  = VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT;
         }
         vkCmdPipelineBarrier2(vkCurrentCmd, &vkDependencyInfo);
@@ -543,6 +661,8 @@ int main()
         // Advance to the next frame. 
         frameIndex++;
 
+        globalTime += 10 * (float)deltaTime.count();
+
         if (kTargetFrameDuration - deltaTime > std::chrono::duration<double>::zero())
             std::this_thread::sleep_for(kTargetFrameDuration - deltaTime);
 
@@ -558,6 +678,8 @@ int main()
     vkDeviceWaitIdle(vkLogicalDevice);
 
     vmaDestroyAllocator(vkMemoryAllocator);
+
+    vkDestroyPipelineLayout(vkLogicalDevice, vkPipelineLayout, nullptr);
 
     for (auto& shader : vkShaderMap)
         vkDestroyShaderEXT(vkLogicalDevice, shader.second, nullptr);
