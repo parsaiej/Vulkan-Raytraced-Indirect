@@ -4,28 +4,69 @@
 #define VMA_IMPLEMENTATION
 #include <vk_mem_alloc.h>
 
+#define TINYOBJLOADER_IMPLEMENTATION
+#include <tiny_obj_loader.h>
+
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
+
 #include <spdlog/spdlog.h>
 #include <GLFW/glfw3.h>
 
 #include <fstream>
-#include <algorithm>
+#include <intrin.h>
 
 const uint32_t kWindowWidth  = 1920u;
 const uint32_t kWindowHeight = 1080u;
 
-// Target 60Hz. 
-constexpr const std::chrono::duration<double> kTargetFrameDuration(1.0 / 240.0);
+#include <glm/mat4x4.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+
+struct PushConstants
+{
+    glm::mat4 _MatrixVP;
+    glm::mat4 _MatrixM;
+
+    // float _MatrixVP [16];
+    // float _MatrixM  [16];
+    float _Time;
+};
 
 const uint32_t kMaxFramesInFlight = 3u;
 
-void Check(VkResult a, const char* b) { if (a != VK_SUCCESS) { spdlog::critical(b); exit(a); } }
-void Check(bool     a, const char* b) { if (a != true)       { spdlog::critical(b); exit(1); } }
+#ifdef _DEBUG
+    void Check(VkResult a, const char* b) { if (a != VK_SUCCESS) { spdlog::critical(b); __debugbreak(); exit(a); } }
+    void Check(bool     a, const char* b) { if (a != true)       { spdlog::critical(b); __debugbreak(); exit(1); } }
+#else
+    void Check(VkResult a, const char* b) { if (a != VK_SUCCESS) { spdlog::critical(b); exit(a); } }
+    void Check(bool     a, const char* b) { if (a != true)       { spdlog::critical(b); exit(1); } }
+#endif
 
 enum ShaderID
 {
     FullscreenTriangleVert,
-    SeascapeFrag
+    LitFrag,
+    MeshVert
 };
+
+bool CreatePhysicallyBasedMaterialDescriptorLayout(const VkDevice& vkLogicalDevice, VkDescriptorSetLayout& vkDescriptorSetLayout)
+{
+    VkDescriptorSetLayoutBinding vkDescriptorSetLayoutBindings[1] =
+    {
+        // Albedo only for now.
+        { 0u, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1u, VK_SHADER_STAGE_FRAGMENT_BIT, VK_NULL_HANDLE } 
+    };
+
+    VkDescriptorSetLayoutCreateInfo vkDescriptorSetLayoutInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+    {
+        // Define a generic descriptor layout for PBR materials.
+        vkDescriptorSetLayoutInfo.flags        = 0x0;
+        vkDescriptorSetLayoutInfo.bindingCount = ARRAYSIZE(vkDescriptorSetLayoutBindings);
+        vkDescriptorSetLayoutInfo.pBindings    = vkDescriptorSetLayoutBindings;
+    }
+    
+    return vkCreateDescriptorSetLayout(vkLogicalDevice, &vkDescriptorSetLayoutInfo, nullptr, &vkDescriptorSetLayout) == VK_SUCCESS;
+}
 
 bool SelectVulkanPhysicalDevice(const VkInstance& vkInstance, const std::vector<const char*> requiredExtensions, VkPhysicalDevice& vkPhysicalDevice)
 {    
@@ -53,7 +94,6 @@ bool SelectVulkanPhysicalDevice(const VkInstance& vkInstance, const std::vector<
 
     if (vkPhysicalDevice == VK_NULL_HANDLE)
         return false;
-
 
     VkPhysicalDeviceProperties physicalDeviceProperties;
     vkGetPhysicalDeviceProperties(vkPhysicalDevice, &physicalDeviceProperties);
@@ -232,6 +272,246 @@ bool GetVulkanQueueIndices(const VkInstance& vkInstance, const VkPhysicalDevice&
     return vkQueueIndexGraphics != UINT_MAX;
 }
 
+struct SceneParseContext
+{
+    const VkDevice              vkLogicalDevice;
+    const VmaAllocator          vkMemoryAllocator;
+    const VkQueue               vkGraphicsQueue;
+    const VkCommandPool         vkCommandPool;
+    const VkDescriptorPool      vkDescriptorPool;
+    const VkDescriptorSetLayout vkMaterialDescriptorSetLayout;
+
+    // Device-uploaded resources.
+    std::vector<std::pair<VkBuffer, VmaAllocation>>& dedicatedMemoryIndices;
+    std::vector<std::pair<VkBuffer, VmaAllocation>>& dedicatedMemoryVertices;
+};
+
+struct Vertex
+{
+    float positionOS [3];
+    float normalOS   [3];
+    float texCoord0  [2];
+};
+
+bool ParseScene(const char* pFilePath, SceneParseContext& context)
+{
+    tinyobj::ObjReader reader;
+
+    if (!reader.ParseFromFile(pFilePath))
+        return false;
+
+    if (!reader.Warning().empty())
+        spdlog::warn("[tinyobj] [{}]:\n\n{}", pFilePath, reader.Warning());
+
+    const auto& shapes    = reader.GetShapes();
+    const auto& attrib    = reader.GetAttrib();
+    const auto& materials = reader.GetMaterials();
+
+    /*
+    for (const auto& material : materials)
+    {
+        spdlog::info("Parsing Material: {}", material.name);
+
+        VkDescriptorSetAllocateInfo vkDescriptorSetAllocateInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
+        {
+            vkDescriptorSetAllocateInfo.descriptorPool      = *context.vkDescriptorPool;
+            vkDescriptorSetAllocateInfo.descriptorSetCount  = 1u;
+            vkDescriptorSetAllocateInfo.pSetLayouts         = context.vkMaterialDescriptorSetLayout;
+        }
+
+        VkDescriptorSet vkDescriptorSet;
+        Check(vkAllocateDescriptorSets(*context.vkLogicalDevice, &vkDescriptorSetAllocateInfo, &vkDescriptorSet), "Failed to create Vulkan Descriptor Sets.");
+    }
+    */
+
+    std::vector<std::pair<VkBuffer, VmaAllocation>> stagingMemoryIndices;
+    std::vector<std::pair<VkBuffer, VmaAllocation>> stagingMemoryVertices;
+
+    auto UploadHostMemoryToStagingBuffer = [&](const void* pData, uint32_t size)
+    {
+        VkBufferCreateInfo bufferInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+        bufferInfo.size  = size;
+        bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        
+        VmaAllocationCreateInfo allocInfo = {};
+        allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
+        allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+        
+        std::pair<VkBuffer, VmaAllocation> stagingBuffer;
+        Check(vmaCreateBuffer(context.vkMemoryAllocator, &bufferInfo, &allocInfo, &stagingBuffer.first, &stagingBuffer.second, nullptr), "Failed to create staging buffer memory.");
+
+        void* pMappedData;
+        Check(vmaMapMemory(context.vkMemoryAllocator, stagingBuffer.second, &pMappedData), "Failed to map a pointer to staging memory.");
+        {
+            // Copy from Host -> Staging memory.
+            memcpy(pMappedData, pData, size);
+
+            vmaUnmapMemory(context.vkMemoryAllocator, stagingBuffer.second);
+        }
+
+        return stagingBuffer;
+    };
+
+    auto AllocateDedicatedBuffer = [&](uint32_t size, VkBufferUsageFlags usage)
+    {
+        VkBufferCreateInfo bufferInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+        bufferInfo.size  = size;
+        bufferInfo.usage = usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        
+        VmaAllocationCreateInfo allocInfo = {};
+        allocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+        
+        std::pair<VkBuffer, VmaAllocation> dedicatedBuffer;
+        Check(vmaCreateBuffer(context.vkMemoryAllocator, &bufferInfo, &allocInfo, &dedicatedBuffer.first, &dedicatedBuffer.second, nullptr), "Failed to create staging buffer memory.");
+
+        return dedicatedBuffer;
+    };
+
+    for (const auto& shape : shapes)
+    {
+        spdlog::info("Parsing Shape: {}", shape.name);
+
+        // Pull the mesh info.
+        const auto& mesh = shape.mesh;
+
+        // Flattened mesh data.
+        std::vector<uint32_t> hostMemoryIndices;
+        std::vector<Vertex>   hostMemoryVertices;
+        
+        for (const auto& index : mesh.indices)
+        {
+            Vertex vertex;
+
+            // Positions.
+            vertex.positionOS[0] = attrib.vertices[3u * size_t(index.vertex_index) + 0u];
+            vertex.positionOS[1] = attrib.vertices[3u * size_t(index.vertex_index) + 1u];
+            vertex.positionOS[2] = attrib.vertices[3u * size_t(index.vertex_index) + 2u];
+            
+            // Normals.
+            vertex.normalOS[0] = (index.normal_index >= 0) ? attrib.normals[3u * size_t(index.normal_index) + 0u] : 0;
+            vertex.normalOS[1] = (index.normal_index >= 0) ? attrib.normals[3u * size_t(index.normal_index) + 1u] : 0;
+            vertex.normalOS[2] = (index.normal_index >= 0) ? attrib.normals[3u * size_t(index.normal_index) + 2u] : 1;
+
+            // Texture Coordinates.
+            vertex.texCoord0[0] = (index.texcoord_index >= 0) ? attrib.texcoords[2u * size_t(index.texcoord_index) + 0u] : 0;
+            vertex.texCoord0[1] = (index.texcoord_index >= 0) ? attrib.texcoords[2u * size_t(index.texcoord_index) + 1u] : 0;
+
+            // Push the vertex. TODO: Deduplicate.
+            hostMemoryVertices.push_back(vertex);
+
+            // Increment indices. 
+            hostMemoryIndices.push_back((uint32_t)hostMemoryIndices.size());
+        }
+
+        // Staging Memory.
+        stagingMemoryIndices .push_back(UploadHostMemoryToStagingBuffer(hostMemoryIndices.data(),  sizeof(uint32_t) * (uint32_t)hostMemoryIndices.size()));
+        stagingMemoryVertices.push_back(UploadHostMemoryToStagingBuffer(hostMemoryVertices.data(), sizeof(Vertex)   * (uint32_t)hostMemoryVertices.size()));
+
+        // Dedicated Memory.
+        context.dedicatedMemoryIndices .push_back(AllocateDedicatedBuffer(sizeof(uint32_t) * (uint32_t)hostMemoryIndices.size(), VK_BUFFER_USAGE_INDEX_BUFFER_BIT));
+        context.dedicatedMemoryVertices.push_back(AllocateDedicatedBuffer(sizeof(Vertex)   * (uint32_t)hostMemoryIndices.size(), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT));
+    }
+
+    // Transfer Staging -> Dedicated Memory.
+
+    VkCommandBufferAllocateInfo vkCommandAllocateInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
+    {
+        vkCommandAllocateInfo.commandBufferCount = 1u;
+        vkCommandAllocateInfo.commandPool        = context.vkCommandPool;
+    }
+
+    VkCommandBuffer vkCommand;
+    Check(vkAllocateCommandBuffers(context.vkLogicalDevice, &vkCommandAllocateInfo, &vkCommand), "Failed to created command buffer for uploading scene resource memory.");
+
+    VkCommandBufferBeginInfo vkCommandsBeginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+    {
+        vkCommandsBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    }
+    Check(vkBeginCommandBuffer(vkCommand, &vkCommandsBeginInfo), "Failed to begin recording upload commands");
+
+    auto RecordCopy = [&](std::pair<VkBuffer, VmaAllocation>& src, std::pair<VkBuffer, VmaAllocation>& dst)
+    {
+        VmaAllocationInfo allocationInfo;
+        vmaGetAllocationInfo(context.vkMemoryAllocator, src.second, &allocationInfo);
+
+        VkBufferCopy copyInfo;
+        {
+            copyInfo.srcOffset = 0u;
+            copyInfo.dstOffset = 0u;
+            copyInfo.size      = allocationInfo.size;
+        }
+        vkCmdCopyBuffer(vkCommand, src.first, dst.first, 1u, &copyInfo);
+    };
+
+    for (uint32_t shapeIndex = 0u; shapeIndex < shapes.size(); shapeIndex++)
+    {
+        RecordCopy(stagingMemoryIndices[shapeIndex],  context.dedicatedMemoryIndices[shapeIndex]);
+        RecordCopy(stagingMemoryVertices[shapeIndex], context.dedicatedMemoryVertices[shapeIndex]);
+    }
+
+    Check(vkEndCommandBuffer(vkCommand), "Failed to end recording upload commands");
+
+    VkSubmitInfo vkSubmitInfo = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
+    {
+        vkSubmitInfo.commandBufferCount = 1u;
+        vkSubmitInfo.pCommandBuffers    = &vkCommand;
+    }
+    Check(vkQueueSubmit(context.vkGraphicsQueue, 1u, &vkSubmitInfo, VK_NULL_HANDLE), "Failed to submit copy commands to the graphics queue.");
+
+    // Wait for the copies to complete. 
+    Check(vkDeviceWaitIdle(context.vkLogicalDevice), "Failed to wait for copy commands to finish dispatching.");
+
+    // Release staging memory. 
+    for (uint32_t shapeIndex = 0u; shapeIndex < shapes.size(); shapeIndex++)
+    {
+        vmaDestroyBuffer(context.vkMemoryAllocator, stagingMemoryIndices [shapeIndex].first, stagingMemoryIndices [shapeIndex].second);
+        vmaDestroyBuffer(context.vkMemoryAllocator, stagingMemoryVertices[shapeIndex].first, stagingMemoryVertices[shapeIndex].second);
+    }
+
+    return true;
+}
+
+void GetVertexInputLayout(std::vector<VkVertexInputBindingDescription2EXT>& bindings, std::vector<VkVertexInputAttributeDescription2EXT>& attributes)
+{
+    VkVertexInputBindingDescription2EXT binding = { VK_STRUCTURE_TYPE_VERTEX_INPUT_BINDING_DESCRIPTION_2_EXT };
+    {
+        binding.binding   = 0u;
+        binding.stride    = sizeof(Vertex);
+        binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+        binding.divisor   = 1u;
+    }
+    bindings.push_back( binding );
+
+    VkVertexInputAttributeDescription2EXT attribute = { VK_STRUCTURE_TYPE_VERTEX_INPUT_ATTRIBUTE_DESCRIPTION_2_EXT };
+
+    // Position
+    {
+        attribute.binding  = 0u;
+        attribute.location = 0u;
+        attribute.offset   = offsetof(Vertex, positionOS);
+        attribute.format   = VK_FORMAT_R32G32B32_SFLOAT;
+    }
+    attributes.push_back( attribute );
+
+    // Normal
+    {
+        attribute.binding  = 0u;
+        attribute.location = 1u;
+        attribute.offset   = offsetof(Vertex, normalOS);
+        attribute.format   = VK_FORMAT_R32G32B32_SFLOAT;
+    }
+    attributes.push_back( attribute );
+
+    // Texcoord
+    {
+        attribute.binding  = 0u;
+        attribute.location = 2u;
+        attribute.offset   = offsetof(Vertex, texCoord0);
+        attribute.format   = VK_FORMAT_R32G32_SFLOAT;
+    }
+    attributes.push_back( attribute );
+}
+
 int main()
 {
     Check(glfwInit(), "Failed to initialize GLFW.");
@@ -400,8 +680,14 @@ int main()
         Check(vkCreateFence     (vkLogicalDevice, &vkFenceInfo,     NULL, &vkInFlightFences[frameIndex]),           "Failed to create Vulkan Fence.");
     }
 
+    // Obtain Queues (just Graphics for now).
+    // ------------------------------------------------
+
     VkQueue vkGraphicsQueue;
     vkGetDeviceQueue(vkLogicalDevice, vkQueueIndexGraphics, 0u, &vkGraphicsQueue);
+
+    // Create Memory Allocator
+    // ------------------------------------------------
 
     VmaVulkanFunctions vmaVulkanFunctions = {};
     vmaVulkanFunctions.vkGetInstanceProcAddr = vkGetInstanceProcAddr;
@@ -409,18 +695,68 @@ int main()
     
     VmaAllocatorCreateInfo vmaAllocatorInfo = {};
     vmaAllocatorInfo.flags            = VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT;
-    vmaAllocatorInfo.vulkanApiVersion = VK_API_VERSION_1_2;
+    vmaAllocatorInfo.vulkanApiVersion = VK_API_VERSION_1_3;
     vmaAllocatorInfo.physicalDevice   = vkPhysicalDevice;
     vmaAllocatorInfo.device           = vkLogicalDevice;
     vmaAllocatorInfo.instance         = vkInstance;
     vmaAllocatorInfo.pVulkanFunctions = &vmaVulkanFunctions;
     
-    VmaAllocator vkMemoryAllocator;
+    VmaAllocator               vkMemoryAllocator;
+    std::vector<VmaAllocation> vkMemoryAllocations;
     Check(vmaCreateAllocator(&vmaAllocatorInfo, &vkMemoryAllocator), "Failed to create Vulkan Memory Allocator.");
 
-    spdlog::info("Initialized Vulkan.");
+    // Create Descriptor Pool
+    // ------------------------------------------------
 
-    // Load Shaders
+    VkDescriptorPoolSize vkDescriptorPoolSizes[2] = 
+    {
+        { VK_DESCRIPTOR_TYPE_SAMPLER,         1u },
+        { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 128u }
+    };
+
+    VkDescriptorPoolCreateInfo vkDescriptorPoolInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
+    {
+        vkDescriptorPoolInfo.poolSizeCount = ARRAYSIZE(vkDescriptorPoolSizes);
+        vkDescriptorPoolInfo.pPoolSizes    = vkDescriptorPoolSizes;
+        vkDescriptorPoolInfo.maxSets       = 1u;
+        vkDescriptorPoolInfo.flags         = 0x0;
+    }
+
+    VkDescriptorPool vkDescriptorPool;
+    Check(vkCreateDescriptorPool(vkLogicalDevice, &vkDescriptorPoolInfo, VK_NULL_HANDLE, &vkDescriptorPool), "Failed to create Vulkan Descriptor Pool.");
+
+    spdlog::info("Initialized Vulkan.");
+    
+    // Configure Descriptor Set Layouts
+    // --------------------------------------
+
+    VkDescriptorSetLayout vkDescriptorSetLayout;
+    Check(CreatePhysicallyBasedMaterialDescriptorLayout(vkLogicalDevice, vkDescriptorSetLayout), "Failed to create a Vulkan Descriptor Set Layout for Physically Based Materials.");
+
+    // Load Scene
+    // ------------------------------------------------
+
+    std::vector<std::pair<VkBuffer, VmaAllocation>> dedicatedMemoryIndices;
+    std::vector<std::pair<VkBuffer, VmaAllocation>> dedicatedMemoryVertices;
+
+    SceneParseContext sceneContext =
+    {
+        vkLogicalDevice,
+        vkMemoryAllocator,
+        vkGraphicsQueue,
+        vkCommandPool,
+        vkDescriptorPool,
+        vkDescriptorSetLayout,
+
+        // Resources
+        dedicatedMemoryIndices,
+        dedicatedMemoryVertices
+    };
+
+    // Check(ParseScene("..\\Assets\\sponza-dabrovic\\sponza.obj", sceneContext), "Failed to read the input scene.");
+    Check(ParseScene("..\\Assets\\bunny\\bunny.obj", sceneContext), "Failed to read the input scene.");
+
+    // Shader Creation Utility
     // ------------------------------------------------
 
     std::map<ShaderID, VkShaderEXT> vkShaderMap;
@@ -448,46 +784,78 @@ int main()
             exit(1);
         }
 
+        spdlog::info("Loaded Vulkan Shader: {}", filePath);
+
         vkShaderMap[shaderID] = vkShader;
     };
 
-    VkPushConstantRange vkGlobalPushConstants;
+    // Configure Push Constants
+    // --------------------------------------
+
+    VkPushConstantRange vkPushConstants;
     {
-        vkGlobalPushConstants.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-        vkGlobalPushConstants.offset     = 0u;
-        vkGlobalPushConstants.size       = sizeof(float);
+        vkPushConstants.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+        vkPushConstants.offset     = 0u;
+        vkPushConstants.size       = sizeof(PushConstants);
     }
+
+    // Configure Pipeline Layouts
+    // --------------------------------------
     
     VkPipelineLayoutCreateInfo vkPipelineLayoutInfo = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
     {
-        vkPipelineLayoutInfo.setLayoutCount         = 0u;
-        vkPipelineLayoutInfo.pSetLayouts            = nullptr;
+        vkPipelineLayoutInfo.setLayoutCount         = 1u;
+        vkPipelineLayoutInfo.pSetLayouts            = &vkDescriptorSetLayout;
         vkPipelineLayoutInfo.pushConstantRangeCount = 1u;
-        vkPipelineLayoutInfo.pPushConstantRanges    = &vkGlobalPushConstants;
+        vkPipelineLayoutInfo.pPushConstantRanges    = &vkPushConstants;
     }
     VkPipelineLayout vkPipelineLayout;
-    vkCreatePipelineLayout(vkLogicalDevice, &vkPipelineLayoutInfo, nullptr, &vkPipelineLayout);
-
-    VkShaderCreateInfoEXT fullScreenTriangleShaderInfo = { VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT };
-    {
-        fullScreenTriangleShaderInfo.stage     = VK_SHADER_STAGE_VERTEX_BIT;
-        fullScreenTriangleShaderInfo.nextStage = VK_SHADER_STAGE_FRAGMENT_BIT;
-        
-        fullScreenTriangleShaderInfo.pushConstantRangeCount = 1u;
-        fullScreenTriangleShaderInfo.pPushConstantRanges    = &vkGlobalPushConstants;
-    }
-    LoadShader(ShaderID::FullscreenTriangleVert, "FullscreenTriangle.vert.spv", fullScreenTriangleShaderInfo);
+    Check(vkCreatePipelineLayout(vkLogicalDevice, &vkPipelineLayoutInfo, nullptr, &vkPipelineLayout), "Failed to create the default Vulkan Pipeline Layout");
     
-    VkShaderCreateInfoEXT seascapeShaderInfo = { VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT };
+    // Create Shader Objects
+    // --------------------------------------
+
+    VkShaderCreateInfoEXT vertexShaderInfo = { VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT };
     {
-        seascapeShaderInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+        vertexShaderInfo.stage     = VK_SHADER_STAGE_VERTEX_BIT;
+        vertexShaderInfo.nextStage = VK_SHADER_STAGE_FRAGMENT_BIT;
         
-        seascapeShaderInfo.pushConstantRangeCount = 1u;
-        seascapeShaderInfo.pPushConstantRanges    = &vkGlobalPushConstants;
+        vertexShaderInfo.pushConstantRangeCount = 1u;
+        vertexShaderInfo.pPushConstantRanges    = &vkPushConstants;
+        vertexShaderInfo.setLayoutCount         = 0u;
+        vertexShaderInfo.pSetLayouts            = nullptr;
     }
-    LoadShader(ShaderID::SeascapeFrag, "Seascape.frag.spv", seascapeShaderInfo);
+    LoadShader(ShaderID::FullscreenTriangleVert, "FullscreenTriangle.vert.spv", vertexShaderInfo);
+    LoadShader(ShaderID::MeshVert,               "Mesh.vert.spv"              , vertexShaderInfo);
+    
+    VkShaderCreateInfoEXT litShaderInfo = { VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT };
+    {
+        litShaderInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+        
+        litShaderInfo.pushConstantRangeCount = 1u;
+        litShaderInfo.pPushConstantRanges    = &vkPushConstants;
+    }
+    LoadShader(ShaderID::LitFrag, "Lit.frag.spv", litShaderInfo);
 
     float globalTime = 0.0;
+
+    // Vertex Input Layout
+    // ------------------------------------------------
+
+    std::vector<VkVertexInputBindingDescription2EXT>   vertexInputBindings;
+    std::vector<VkVertexInputAttributeDescription2EXT> vertexInputAttributes;
+    GetVertexInputLayout(vertexInputBindings, vertexInputAttributes);
+
+    // Configure Push Constants
+    // ------------------------------------------------
+
+    PushConstants pushConstants;
+    {
+        pushConstants._MatrixM  = glm::identity<glm::mat4>();
+        pushConstants._MatrixVP = glm::perspectiveFov(glm::radians(80.0f), 1920.0f, 1080.0f, 0.01f, 1000.0f) * glm::lookAt(glm::vec3(0, 0, 2), glm::vec3(0, 1, 0), glm::vec3(0, -1, 0));
+        pushConstants._Time     = 1.0;
+    }
+
 
     // Command Recording
     // ------------------------------------------------
@@ -511,6 +879,18 @@ int main()
             vkDependencyInfo.pImageMemoryBarriers    = &vkImageBarrier;
         }
 
+        // Configure Attachments
+        // --------------------------------------------
+
+        VkRenderingAttachmentInfo colorAttachmentInfo = { VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
+        {
+            colorAttachmentInfo.loadOp      = VK_ATTACHMENT_LOAD_OP_CLEAR;
+            colorAttachmentInfo.storeOp     = VK_ATTACHMENT_STORE_OP_STORE;
+            colorAttachmentInfo.clearValue  = {{{ 0.0, 0.0, 0.0, 1.0 }}};
+            colorAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            colorAttachmentInfo.imageView   = vkSwapchainImageViews[vkCurrentSwapchainImageIndex];
+        } 
+
         // Record
         // --------------------------------------------
 
@@ -523,15 +903,6 @@ int main()
             vkImageBarrier.dstStageMask  = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
         }
         vkCmdPipelineBarrier2(vkCurrentCmd, &vkDependencyInfo);
-
-        VkRenderingAttachmentInfo colorAttachmentInfo = { VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
-        {
-            colorAttachmentInfo.loadOp      = VK_ATTACHMENT_LOAD_OP_CLEAR;
-            colorAttachmentInfo.storeOp     = VK_ATTACHMENT_STORE_OP_STORE;
-            colorAttachmentInfo.clearValue  = {{{ 0.25, 0.5, 1.0, 1.0 }}};
-            colorAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-            colorAttachmentInfo.imageView   = vkSwapchainImageViews[vkCurrentSwapchainImageIndex];
-        } 
 
         VkRenderingInfo vkRenderingInfo = { VK_STRUCTURE_TYPE_RENDERING_INFO };
         {
@@ -555,20 +926,36 @@ int main()
 
         VkShaderEXT vkGraphicsShaders[5] =
         {
-            vkShaderMap[ShaderID::FullscreenTriangleVert],
+            vkShaderMap[ShaderID::MeshVert],
             VK_NULL_HANDLE,
             VK_NULL_HANDLE,
             VK_NULL_HANDLE,
-            vkShaderMap[ShaderID::SeascapeFrag]
+            vkShaderMap[ShaderID::LitFrag]
         };
 
         vkCmdBindShadersEXT(vkCurrentCmd, 5u, vkGraphicsShaderStageBits, vkGraphicsShaders);
 
         SetDefaultRenderState(vkCurrentCmd);
 
-        vkCmdPushConstants(vkCurrentCmd, vkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0u, sizeof(float), &globalTime);
+        vkCmdPushConstants(vkCurrentCmd, vkPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0u, sizeof(PushConstants), &pushConstants);
 
-        vkCmdDraw(vkCurrentCmd, 3u, 1u, 0u, 0u);
+        vkCmdSetVertexInputEXT(vkCurrentCmd, (uint32_t)vertexInputBindings.size(), vertexInputBindings.data(), (uint32_t)vertexInputAttributes.size(), vertexInputAttributes.data());
+
+        for (uint32_t instanceIndex = 0u; instanceIndex < sceneContext.dedicatedMemoryIndices.size(); instanceIndex++)
+        {
+            const auto& indexBuffer  = sceneContext.dedicatedMemoryIndices[instanceIndex];
+            const auto& vertexBuffer = sceneContext.dedicatedMemoryVertices[instanceIndex];
+
+            VmaAllocationInfo allocationInfo;
+            vmaGetAllocationInfo(vkMemoryAllocator, indexBuffer.second, &allocationInfo);
+
+            vkCmdBindIndexBuffer(vkCurrentCmd, indexBuffer.first, 0u, VK_INDEX_TYPE_UINT32);
+
+            VkDeviceSize vertexBufferOffset = 0u;
+            vkCmdBindVertexBuffers(vkCurrentCmd, 0u, 1u, &vertexBuffer.first, &vertexBufferOffset);
+            
+            vkCmdDrawIndexed(vkCurrentCmd, (uint32_t)allocationInfo.size / sizeof(uint32_t), 1u, 0u, 0u, 0u);
+        }
 
         vkCmdEndRendering(vkCurrentCmd);
 
@@ -589,15 +976,15 @@ int main()
     uint64_t frameIndex = 0u;
 
     // Initialize delta time.
-    auto deltaTime = kTargetFrameDuration;
+    auto deltaTime = std::chrono::duration<double>(0.0);
 
     while (!glfwWindowShouldClose(pWindow))
     {
-        // Determine frame-in-flight index.
-        uint32_t frameInFlightIndex = frameIndex % kMaxFramesInFlight;
-
         // Sample the time at the beginning of the frame.
         auto frameTimeBegin = std::chrono::high_resolution_clock::now();
+
+        // Determine frame-in-flight index.
+        uint32_t frameInFlightIndex = frameIndex % kMaxFramesInFlight;
 
         // Wait for the current frame fence to be signaled.
         Check(vkWaitForFences(vkLogicalDevice, 1u, &vkInFlightFences[frameInFlightIndex], VK_TRUE, UINT64_MAX), "Failed to wait for frame fence");
@@ -651,6 +1038,11 @@ int main()
             vkQueuePresentInfo.pImageIndices      = &vkCurrentSwapchainImageIndex;
         }
         Check(vkQueuePresentKHR(vkGraphicsQueue, &vkQueuePresentInfo), "Failed to submit image to the Vulkan Presentation Engine.");
+        
+        // Advance to the next frame. 
+        frameIndex++;
+
+        glfwPollEvents();
 
         // Sample the time at the end of the frame.
         auto frameTimeEnd = std::chrono::high_resolution_clock::now();
@@ -658,15 +1050,8 @@ int main()
         // Update delta time.
         deltaTime = frameTimeEnd - frameTimeBegin;
         
-        // Advance to the next frame. 
-        frameIndex++;
-
-        globalTime += 10 * (float)deltaTime.count();
-
-        if (kTargetFrameDuration - deltaTime > std::chrono::duration<double>::zero())
-            std::this_thread::sleep_for(kTargetFrameDuration - deltaTime);
-
-        glfwPollEvents();
+        // Accumulate global time.
+        globalTime += (float)deltaTime.count();
     }
 
     // Release
@@ -677,9 +1062,17 @@ int main()
 
     vkDeviceWaitIdle(vkLogicalDevice);
 
+    for (auto& indexBuffer : sceneContext.dedicatedMemoryIndices)
+        vmaDestroyBuffer(vkMemoryAllocator, indexBuffer.first, indexBuffer.second);
+
+    for (auto& vertexBuffer : sceneContext.dedicatedMemoryVertices)
+        vmaDestroyBuffer(vkMemoryAllocator, vertexBuffer.first, vertexBuffer.second);
+
     vmaDestroyAllocator(vkMemoryAllocator);
 
-    vkDestroyPipelineLayout(vkLogicalDevice, vkPipelineLayout, nullptr);
+    vkDestroyDescriptorSetLayout(vkLogicalDevice, vkDescriptorSetLayout, nullptr);
+    vkDestroyDescriptorPool     (vkLogicalDevice, vkDescriptorPool,      nullptr);
+    vkDestroyPipelineLayout     (vkLogicalDevice, vkPipelineLayout,      nullptr);
 
     for (auto& shader : vkShaderMap)
         vkDestroyShaderEXT(vkLogicalDevice, shader.second, nullptr);

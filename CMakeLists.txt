@@ -22,6 +22,8 @@ find_package(Stb                   REQUIRED)
 find_package(volk                  REQUIRED)
 find_package(glfw3                 REQUIRED)
 find_package(VulkanMemoryAllocator REQUIRED)
+find_package(tinyobjloader         REQUIRED)
+find_package(glm                   REQUIRED)
 
 # Executable
 # --------------------------------
@@ -41,4 +43,6 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     spdlog::spdlog_header_only
     glfw
     GPUOpen::VulkanMemoryAllocator
+    tinyobjloader::tinyobjloader
+    glm::glm-header-only
 )
