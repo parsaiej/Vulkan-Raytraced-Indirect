@@ -28,7 +28,9 @@ find_package(glm                   REQUIRED)
 # Executable
 # --------------------------------
 
-add_executable(${PROJECT_NAME} Source/Main.cpp)
+add_executable(${PROJECT_NAME} 
+    Source/Main.cpp
+)
 
 # Include
 # --------------------------------
