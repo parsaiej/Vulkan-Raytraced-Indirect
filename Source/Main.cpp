@@ -62,6 +62,15 @@ struct FrameParams
     VkCommandBuffer cmd;
     VkImage         backBuffer;
     VkImageView     backBufferView;
+    double          deltaTime;
+};
+
+
+struct Image
+{
+    VkImage       image;
+    VkImageView   imageView;
+    VmaAllocation imageAllocation;  
 };
 
 // Forward-declared RAII utility for boilerplat vulkan initializations.
@@ -129,12 +138,17 @@ void SetDefaultRenderState(VkCommandBuffer commandBuffer);
 bool GetVulkanQueueIndices(const VkInstance& vkInstance, const VkPhysicalDevice& vkPhysicalDevice, uint32_t& vkQueueIndexGraphics);
 bool ParseScene(const char* pFilePath, SceneParseContext& context);
 void GetVertexInputLayout(std::vector<VkVertexInputBindingDescription2EXT>& bindings, std::vector<VkVertexInputAttributeDescription2EXT>& attributes);
+bool CreateRenderingAttachments(RenderContext* pRenderContext, Image& colorAttachment, Image& depthAttachment);
+void NameVulkanObject(VkDevice vkLogicalDevice, VkObjectType vkObjectType, uint64_t vkObject, std::string vkObjectName);
 
 // Executable implementation.
 // ---------------------------------------------------------
 
 int main()
 {
+    // Launch Vulkan + OS Window
+    // --------------------------------------
+
     std::unique_ptr<RenderContext> pRenderContext = std::make_unique<RenderContext>(kWindowWidth, kWindowHeight);
     
     // Configure Descriptor Set Layouts
@@ -159,7 +173,15 @@ int main()
     };
 
     // Check(ParseScene("..\\Assets\\sponza-dabrovic\\sponza.obj", sceneContext), "Failed to read the input scene.");
-    Check(ParseScene("..\\Assets\\bunny\\bunny.obj", sceneContext), "Failed to read the input scene.");
+    // Check(ParseScene("..\\Assets\\bunny\\bunny.obj", sceneContext), "Failed to read the input scene.");
+    Check(ParseScene("..\\Assets\\dragon\\dragon.obj", sceneContext), "Failed to read the input scene.");
+
+    // Create Rendering Attachments
+    // ------------------------------------------------
+
+    Image colorAttachment;
+    Image depthAttachment;
+    Check(CreateRenderingAttachments(pRenderContext.get(), colorAttachment, depthAttachment), "Failed to create the rendering attachments.");
 
     // Shader Creation Utility
     // ------------------------------------------------
@@ -169,11 +191,7 @@ int main()
     auto LoadShader = [&](ShaderID shaderID, const char* filePath, VkShaderCreateInfoEXT vkShaderInfo)
     {
         std::vector<char> shaderByteCode;
-        if (!LoadByteCode(filePath, shaderByteCode))
-        {
-            spdlog::critical("Failed to read shader bytecode: {}", filePath);
-            exit(1);
-        }
+        Check(LoadByteCode(filePath, shaderByteCode), std::format("Failed to read shader bytecode: {}", filePath).c_str());
 
         vkShaderInfo.pName    = "Main";
         vkShaderInfo.pCode    = shaderByteCode.data();
@@ -242,8 +260,6 @@ int main()
     }
     LoadShader(ShaderID::LitFrag, "Lit.frag.spv", litShaderInfo);
 
-    float globalTime = 0.0;
-
     // Vertex Input Layout
     // ------------------------------------------------
 
@@ -257,36 +273,55 @@ int main()
     PushConstants pushConstants;
     {
         pushConstants._MatrixM  = glm::identity<glm::mat4>();
-        pushConstants._MatrixVP = glm::perspectiveFov(glm::radians(80.0f), 1920.0f, 1080.0f, 0.01f, 1000.0f) * glm::lookAt(glm::vec3(0, 0, 2), glm::vec3(0, 1, 0), glm::vec3(0, -1, 0));
+        pushConstants._MatrixVP = glm::perspectiveFov(glm::radians(80.0f), 1920.0f, 1080.0f, 0.01f, 1000.0f) * glm::lookAt(glm::vec3(1.0, 0, 1.0), glm::vec3(0, 0, 0), glm::vec3(0, -1, 0));
         pushConstants._Time     = 1.0;
     }
 
     // Command Recording
     // ------------------------------------------------
 
-    auto RecordCommands = [&](FrameParams frameParams)
+    auto ColorAttachmentBarrier = [&](VkCommandBuffer vkCommand, VkImage vkImage, 
+        VkImageLayout         vkLayoutOld, 
+        VkImageLayout         vkLayoutNew, 
+        VkAccessFlags2        vkAccessSrc,
+        VkAccessFlags2        vkAccessDst,
+        VkPipelineStageFlags2 vkStageSrc,
+        VkPipelineStageFlags2 vkStageDst)
     {
-        // Configure Resource Barriers
-        // --------------------------------------------
+        VkImageSubresourceRange imageSubresource;
+        {
+            imageSubresource.levelCount     = 1u;
+		    imageSubresource.layerCount     = 1u;
+            imageSubresource.baseMipLevel   = 0u;
+            imageSubresource.baseArrayLayer = 0u;
+		    imageSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        }
 
         VkImageMemoryBarrier2 vkImageBarrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };
         {
-            vkImageBarrier.image                           = frameParams.backBuffer;		
-            vkImageBarrier.srcQueueFamilyIndex             = pRenderContext->GetCommandQueueIndex();
-            vkImageBarrier.dstQueueFamilyIndex             = pRenderContext->GetCommandQueueIndex();
-            vkImageBarrier.subresourceRange.levelCount     = 1u;
-		    vkImageBarrier.subresourceRange.layerCount     = 1u;
-            vkImageBarrier.subresourceRange.baseMipLevel   = 0u;
-            vkImageBarrier.subresourceRange.baseArrayLayer = 0u;
-		    vkImageBarrier.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+            vkImageBarrier.image                = vkImage;		
+            vkImageBarrier.oldLayout            = vkLayoutOld;
+            vkImageBarrier.newLayout            = vkLayoutNew;
+            vkImageBarrier.srcAccessMask        = vkAccessSrc;
+            vkImageBarrier.dstAccessMask        = vkAccessDst;
+            vkImageBarrier.srcStageMask         = vkStageSrc;
+            vkImageBarrier.dstStageMask         = vkStageDst;
+            vkImageBarrier.srcQueueFamilyIndex  = pRenderContext->GetCommandQueueIndex();
+            vkImageBarrier.dstQueueFamilyIndex  = pRenderContext->GetCommandQueueIndex();
+            vkImageBarrier.subresourceRange     = imageSubresource;
         }
 
         VkDependencyInfo vkDependencyInfo = { VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
         {
             vkDependencyInfo.imageMemoryBarrierCount = 1u;
             vkDependencyInfo.pImageMemoryBarriers    = &vkImageBarrier;
-        }
+        }   
+        
+        vkCmdPipelineBarrier2(vkCommand, &vkDependencyInfo);
+    };
 
+    auto RecordCommands = [&](FrameParams frameParams)
+    {
         // Configure Attachments
         // --------------------------------------------
 
@@ -296,27 +331,37 @@ int main()
             colorAttachmentInfo.storeOp     = VK_ATTACHMENT_STORE_OP_STORE;
             colorAttachmentInfo.clearValue  = {{{ 0.0, 0.0, 0.0, 1.0 }}};
             colorAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-            colorAttachmentInfo.imageView   = frameParams.backBufferView;
+            colorAttachmentInfo.imageView   = colorAttachment.imageView;
+        } 
+
+        VkRenderingAttachmentInfo depthAttachmentInfo = { VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
+        {
+            depthAttachmentInfo.loadOp      = VK_ATTACHMENT_LOAD_OP_CLEAR;
+            depthAttachmentInfo.storeOp     = VK_ATTACHMENT_STORE_OP_STORE;
+            depthAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+            depthAttachmentInfo.imageView   = depthAttachment.imageView;
+            depthAttachmentInfo.clearValue.depthStencil = { 1.0, 0x0 };
         } 
 
         // Record
         // --------------------------------------------
 
-        {   
-            vkImageBarrier.oldLayout     = VK_IMAGE_LAYOUT_UNDEFINED;
-            vkImageBarrier.newLayout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-            vkImageBarrier.srcAccessMask = VK_ACCESS_2_NONE;
-            vkImageBarrier.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
-            vkImageBarrier.srcStageMask  = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
-            vkImageBarrier.dstStageMask  = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-        }
-        vkCmdPipelineBarrier2(frameParams.cmd, &vkDependencyInfo);
+        ColorAttachmentBarrier
+        (
+            frameParams.cmd, colorAttachment.image, 
+            VK_IMAGE_LAYOUT_UNDEFINED, 
+            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 
+            VK_ACCESS_2_NONE, 
+            VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, 
+            VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 
+            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT
+        );
 
         VkRenderingInfo vkRenderingInfo = { VK_STRUCTURE_TYPE_RENDERING_INFO };
         {
             vkRenderingInfo.colorAttachmentCount = 1u;
             vkRenderingInfo.pColorAttachments    = &colorAttachmentInfo;
-            vkRenderingInfo.pDepthAttachment     = VK_NULL_HANDLE;
+            vkRenderingInfo.pDepthAttachment     = &depthAttachmentInfo;
             vkRenderingInfo.pStencilAttachment   = VK_NULL_HANDLE;
             vkRenderingInfo.layerCount           = 1u;
             vkRenderingInfo.renderArea           = { {0, 0}, { kWindowWidth, kWindowHeight } };
@@ -351,7 +396,7 @@ int main()
 
         for (uint32_t instanceIndex = 0u; instanceIndex < sceneContext.dedicatedMemoryIndices.size(); instanceIndex++)
         {
-            const auto& indexBuffer  = sceneContext.dedicatedMemoryIndices[instanceIndex];
+            const auto& indexBuffer  = sceneContext.dedicatedMemoryIndices [instanceIndex];
             const auto& vertexBuffer = sceneContext.dedicatedMemoryVertices[instanceIndex];
 
             VmaAllocationInfo allocationInfo;
@@ -367,15 +412,48 @@ int main()
 
         vkCmdEndRendering(frameParams.cmd);
 
+        // Copy the internal color attachment to back buffer. 
+
+        ColorAttachmentBarrier
+        (
+            frameParams.cmd, colorAttachment.image, 
+            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 
+            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, 
+            VK_ACCESS_2_NONE, 
+            VK_ACCESS_2_MEMORY_READ_BIT, 
+            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, 
+            VK_PIPELINE_STAGE_2_TRANSFER_BIT
+        );
+
+        ColorAttachmentBarrier
+        (
+            frameParams.cmd, frameParams.backBuffer,
+            VK_IMAGE_LAYOUT_UNDEFINED, 
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 
+            VK_ACCESS_2_MEMORY_READ_BIT, 
+            VK_ACCESS_2_MEMORY_WRITE_BIT, 
+            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, 
+            VK_PIPELINE_STAGE_2_TRANSFER_BIT
+        );
+
+        VkImageCopy backBufferCopy = {};
         {
-            vkImageBarrier.oldLayout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-            vkImageBarrier.newLayout     = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-            vkImageBarrier.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
-            vkImageBarrier.dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT;
-            vkImageBarrier.srcStageMask  = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-            vkImageBarrier.dstStageMask  = VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT;
+            backBufferCopy.extent         = { kWindowWidth, kWindowHeight, 1u};
+            backBufferCopy.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0u, 0u, 1u };
+            backBufferCopy.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0u, 0u, 1u };
         }
-        vkCmdPipelineBarrier2(frameParams.cmd, &vkDependencyInfo);
+        vkCmdCopyImage(frameParams.cmd, colorAttachment.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, frameParams.backBuffer, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1u, &backBufferCopy);
+
+        ColorAttachmentBarrier
+        (
+            frameParams.cmd, frameParams.backBuffer, 
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 
+            VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, 
+            VK_ACCESS_2_MEMORY_WRITE_BIT, 
+            VK_ACCESS_2_MEMORY_READ_BIT, 
+            VK_PIPELINE_STAGE_2_TRANSFER_BIT, 
+            VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT
+        );
     };
     
     // Kick off render-loop.
@@ -387,6 +465,12 @@ int main()
     // ------------------------------------------------
 
     vkDeviceWaitIdle(pRenderContext->GetDevice());
+
+    vkDestroyImageView(pRenderContext->GetDevice(), colorAttachment.imageView, nullptr);
+    vkDestroyImageView(pRenderContext->GetDevice(), depthAttachment.imageView, nullptr);
+
+    vmaDestroyImage(pRenderContext->GetAllocator(), colorAttachment.image, colorAttachment.imageAllocation);
+    vmaDestroyImage(pRenderContext->GetAllocator(), depthAttachment.image, depthAttachment.imageAllocation);
 
     for (auto& indexBuffer : sceneContext.dedicatedMemoryIndices)
         vmaDestroyBuffer(pRenderContext->GetAllocator(), indexBuffer.first, indexBuffer.second);
@@ -435,12 +519,21 @@ RenderContext::RenderContext(uint32_t width, uint32_t height)
     uint32_t windowExtensionCount;
     auto windowExtensions = glfwGetRequiredInstanceExtensions(&windowExtensionCount);
 
+    std::vector<const char*> requiredInstanceExtensions;
+
+    for (uint32_t windowExtensionIndex = 0u; windowExtensionIndex < windowExtensionCount; windowExtensionIndex++)
+        requiredInstanceExtensions.push_back(windowExtensions[windowExtensionIndex]);
+
+#ifdef _DEBUG
+    requiredInstanceExtensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+#endif
+
     VkInstanceCreateInfo vkInstanceCreateInfo    = { VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
     vkInstanceCreateInfo.pApplicationInfo        = &vkApplicationInfo;
     vkInstanceCreateInfo.enabledLayerCount       = (uint32_t)requiredInstanceLayers.size();
     vkInstanceCreateInfo.ppEnabledLayerNames     = requiredInstanceLayers.data();
-    vkInstanceCreateInfo.enabledExtensionCount   = windowExtensionCount;
-    vkInstanceCreateInfo.ppEnabledExtensionNames = windowExtensions;
+    vkInstanceCreateInfo.enabledExtensionCount   = (uint32_t)requiredInstanceExtensions.size();
+    vkInstanceCreateInfo.ppEnabledExtensionNames = requiredInstanceExtensions.data();
     Check(vkCreateInstance(&vkInstanceCreateInfo, nullptr, &m_VKInstance), "Failed to create the Vulkan Instance.");
 
     volkLoadInstanceOnly(m_VKInstance);
@@ -495,6 +588,14 @@ RenderContext::RenderContext(uint32_t width, uint32_t height)
     m_VKSwapchainImageViews.resize(vkSwapchainImageCount);
 
 	Check(vkGetSwapchainImagesKHR(m_VKDeviceLogical, m_VKSwapchain, &vkSwapchainImageCount, m_VKSwapchainImages.data()), "Failed to obtain the Vulkan Swapchain images.");
+
+#ifdef _DEBUG
+    for (uint32_t swapChainIndex = 0u; swapChainIndex < vkSwapchainImageCount; swapChainIndex++)
+    {
+        auto swapChainName = std::format("Swapchain Image {}", swapChainIndex);
+        NameVulkanObject(m_VKDeviceLogical, VK_OBJECT_TYPE_IMAGE, (uint64_t)m_VKSwapchainImages[swapChainIndex], swapChainName);
+    }
+#endif
 
     VkImageSubresourceRange vkSwapchainImageSubresourceRange;
     {
@@ -666,7 +767,8 @@ void RenderContext::Dispatch(std::function<void(FrameParams)> commandsCallback)
         {
             vkCurrentCommandBuffer,
             m_VKSwapchainImages    [vkCurrentSwapchainImageIndex],
-            m_VKSwapchainImageViews[vkCurrentSwapchainImageIndex]
+            m_VKSwapchainImageViews[vkCurrentSwapchainImageIndex],
+            deltaTime.count()
         };
         commandsCallback(frameParams);
 
@@ -711,6 +813,60 @@ void RenderContext::Dispatch(std::function<void(FrameParams)> commandsCallback)
         // Update delta time.
         deltaTime = frameTimeEnd - frameTimeBegin;
     }
+}
+
+// Utilities Implementation
+// ------------------------------------------------------------
+
+bool CreateRenderingAttachments(RenderContext* pRenderContext, Image& colorAttachment, Image& depthAttachment)
+{
+    auto CreateAttachment = [&](Image& attachment, VkFormat imageFormat, VkImageUsageFlags imageUsageFlags, VkImageAspectFlags imageAspect)
+    {
+        VkImageCreateInfo imageInfo = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
+        {
+            imageInfo.imageType     = VK_IMAGE_TYPE_2D;
+            imageInfo.arrayLayers   = 1u;
+            imageInfo.format        = imageFormat;
+            imageInfo.samples       = VK_SAMPLE_COUNT_1_BIT;
+            imageInfo.usage         = imageUsageFlags;
+            imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            imageInfo.extent        = { kWindowWidth, kWindowHeight, 1};
+            imageInfo.mipLevels     = 1u;
+            imageInfo.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
+            imageInfo.tiling        = VK_IMAGE_TILING_OPTIMAL;
+            imageInfo.flags         = 0x0;
+        }
+
+        VmaAllocationCreateInfo imageAllocInfo = {};
+        {
+            imageAllocInfo.usage = VMA_MEMORY_USAGE_AUTO;
+        }
+
+        Check(vmaCreateImage(pRenderContext->GetAllocator(), &imageInfo, &imageAllocInfo, &attachment.image, &attachment.imageAllocation, VK_NULL_HANDLE), "Failed to create attachment allocation.");
+
+#ifdef _DEBUG
+        auto attachmentName = std::format("{} Attachment", imageAspect & VK_IMAGE_ASPECT_COLOR_BIT ? "Color" : "Depth");
+        NameVulkanObject(pRenderContext->GetDevice(), VK_OBJECT_TYPE_IMAGE, (uint64_t)attachment.image, attachmentName);
+#endif
+
+        VkImageViewCreateInfo imageViewInfo = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
+        {
+            imageViewInfo.image                           = attachment.image;
+            imageViewInfo.viewType                        = VK_IMAGE_VIEW_TYPE_2D;
+            imageViewInfo.format                          = imageFormat;
+            imageViewInfo.subresourceRange.levelCount     = 1u;
+		    imageViewInfo.subresourceRange.layerCount     = 1u;
+            imageViewInfo.subresourceRange.baseMipLevel   = 0u;
+            imageViewInfo.subresourceRange.baseArrayLayer = 0u;
+		    imageViewInfo.subresourceRange.aspectMask     = imageAspect;
+        }
+        Check(vkCreateImageView(pRenderContext->GetDevice(), &imageViewInfo, nullptr, &attachment.imageView), "Failed to create attachment view.");
+    };
+
+    CreateAttachment(colorAttachment, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
+    CreateAttachment(depthAttachment, VK_FORMAT_D32_SFLOAT,     VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,                           VK_IMAGE_ASPECT_DEPTH_BIT);
+
+    return true;
 }
 
 bool CreatePhysicallyBasedMaterialDescriptorLayout(const VkDevice& vkLogicalDevice, VkDescriptorSetLayout& vkDescriptorSetLayout)
@@ -896,9 +1052,10 @@ void SetDefaultRenderState(VkCommandBuffer commandBuffer)
     vkCmdSetAlphaToOneEnableEXT       (commandBuffer, VK_FALSE);
     vkCmdSetAlphaToCoverageEnableEXT  (commandBuffer, VK_FALSE);
     vkCmdSetStencilTestEnableEXT      (commandBuffer, VK_FALSE);
-    vkCmdSetDepthTestEnableEXT        (commandBuffer, VK_FALSE);
     vkCmdSetDepthBiasEnableEXT        (commandBuffer, VK_FALSE);
-    vkCmdSetDepthWriteEnableEXT       (commandBuffer, VK_FALSE);
+    vkCmdSetDepthTestEnableEXT        (commandBuffer, VK_TRUE);
+    vkCmdSetDepthWriteEnableEXT       (commandBuffer, VK_TRUE);
+    vkCmdSetDepthCompareOpEXT         (commandBuffer, VK_COMPARE_OP_LESS_OR_EQUAL);
     vkCmdSetDepthBoundsTestEnable     (commandBuffer, VK_FALSE);
     vkCmdSetDepthClampEnableEXT       (commandBuffer, VK_FALSE);
     vkCmdSetLogicOpEnableEXT          (commandBuffer, VK_FALSE);
@@ -1155,4 +1312,15 @@ void GetVertexInputLayout(std::vector<VkVertexInputBindingDescription2EXT>& bind
         attribute.format   = VK_FORMAT_R32G32_SFLOAT;
     }
     attributes.push_back( attribute );
+}
+
+void NameVulkanObject(VkDevice vkLogicalDevice, VkObjectType vkObjectType, uint64_t vkObject, std::string vkObjectName)
+{
+    VkDebugUtilsObjectNameInfoEXT attachmentNameInfo = { VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT };
+    
+    attachmentNameInfo.pObjectName  = vkObjectName.c_str();
+    attachmentNameInfo.objectType   = vkObjectType;
+    attachmentNameInfo.objectHandle = vkObject;
+        
+    vkSetDebugUtilsObjectNameEXT(vkLogicalDevice, &attachmentNameInfo);
 }
