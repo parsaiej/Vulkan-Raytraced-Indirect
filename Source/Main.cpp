@@ -16,35 +16,51 @@
 #include <fstream>
 #include <intrin.h>
 
+// GLM Includes
+// ---------------------------------------------------------
+
 #include <glm/mat4x4.hpp>
 #include <glm/vec3.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-const uint32_t kWindowWidth  = 1920u;
-const uint32_t kWindowHeight = 1080u;
+// OpenUSD Includes
+// ---------------------------------------------------------
 
-enum ShaderID
-{
-    FullscreenTriangleVert,
-    LitFrag,
-    MeshVert
-};
+#include <pxr/pxr.h>
+#include <pxr/base/tf/errorMark.h>
+#include <pxr/base/gf/matrix4f.h>
+#include <pxr/base/tf/staticTokens.h>
 
-struct PushConstants
-{
-    glm::mat4 _MatrixVP;
-    glm::mat4 _MatrixM;
-    float     _Time;
-};
+// Hydra Core
+#include <pxr/imaging/hd/engine.h>
+#include <pxr/imaging/hd/rendererPlugin.h>
+#include <pxr/imaging/hd/rendererPluginRegistry.h>
+#include <pxr/imaging/hd/renderDelegate.h>
+#include <pxr/imaging/hd/resourceRegistry.h>
+#include <pxr/imaging/hd/renderPass.h>
+#include <pxr/imaging/hd/renderPassState.h>
+#include <pxr/imaging/hd/renderBuffer.h>
+#include <pxr/imaging/hd/task.h>
+#include <pxr/imaging/hd/mesh.h>
 
-struct Vertex
-{
-    glm::vec3 positionOS;
-    glm::vec3 normalOS;
-    glm::vec2 texCoord0;
-};
+// HDX (Hydra Utilities)
+#include <pxr/imaging/hdx/renderTask.h>
+#include <pxr/imaging/hdx/taskController.h>
 
+// USD Hydra Scene Delegate Implementation.
+#include <pxr/usdImaging/usdImaging/delegate.h>
+
+PXR_NAMESPACE_USING_DIRECTIVE
+
+// Constants
+// ---------------------------------------------------------
+
+const uint32_t kWindowWidth       = 1920u;
+const uint32_t kWindowHeight      = 1080u;
 const uint32_t kMaxFramesInFlight = 3u;
+
+// Logging + crash utility when an assertion fails.
+// ---------------------------------------------------------
 
 #ifdef _DEBUG
     void Check(VkResult a, const char* b) { if (a != VK_SUCCESS) { spdlog::critical(b); __debugbreak(); exit(a); } }
@@ -53,6 +69,36 @@ const uint32_t kMaxFramesInFlight = 3u;
     void Check(VkResult a, const char* b) { if (a != VK_SUCCESS) { spdlog::critical(b); exit(a); } }
     void Check(bool     a, const char* b) { if (a != true)       { spdlog::critical(b); exit(1); } }
 #endif
+
+// Index of shaders used by this application.
+// ---------------------------------------------------------
+
+enum ShaderID
+{
+    FullscreenTriangleVert,
+    LitFrag,
+    MeshVert
+};
+
+// Common parameters pushed to all shaders.
+// ---------------------------------------------------------
+
+struct PushConstants
+{
+    glm::mat4 _MatrixVP;
+    glm::mat4 _MatrixM;
+    float     _Time;
+};
+
+// Layout of the standard Vertex for this application.
+// ---------------------------------------------------------
+
+struct Vertex
+{
+    glm::vec3 positionOS;
+    glm::vec3 normalOS;
+    glm::vec2 texCoord0;
+};
 
 // Collection of vulkan primitives to hold the current frame state. 
 // ---------------------------------------------------------
@@ -65,6 +111,8 @@ struct FrameParams
     double          deltaTime;
 };
 
+// Collection of vulkan primitives to hold an image.
+// ---------------------------------------------------------
 
 struct Image
 {
@@ -73,7 +121,7 @@ struct Image
     VmaAllocation imageAllocation;  
 };
 
-// Forward-declared RAII utility for boilerplat vulkan initializations.
+// Context for OS-Window, Vulkan Initialization, Swapchain Management.
 // ---------------------------------------------------------
 
 class RenderContext
@@ -118,6 +166,92 @@ private:
     VkFence         m_VKInFlightFences           [kMaxFramesInFlight];
 };
 
+// USD Hydra Render Delegate
+// ---------------------------------------------------------
+
+const TfTokenVector kSupportedRPrimTypes =
+{
+    HdPrimTypeTokens->mesh,
+};
+
+const TfTokenVector kSupportedSPrimTypes =
+{
+    HdPrimTypeTokens->camera,
+};
+
+const TfTokenVector kSupportedBPrimTypes =
+{
+};
+
+// This token is used for identifying our custom Hydra driver.
+const TfToken kTokenRenderContextDriver = TfToken("RenderContextDriver");
+const TfToken kTokenCurrenFrameParams   = TfToken("CurrentFrameParams");
+
+class RenderDelegate : public HdRenderDelegate
+{
+public:
+    RenderDelegate() {};
+    RenderDelegate(HdRenderSettingsMap const& settingsMap) {};
+    virtual ~RenderDelegate() {};
+
+    void SetDrivers(HdDriverVector const& drivers) override;
+
+    const TfTokenVector& GetSupportedRprimTypes() const override { return kSupportedRPrimTypes; };
+    const TfTokenVector& GetSupportedSprimTypes() const override { return kSupportedSPrimTypes; };
+    const TfTokenVector& GetSupportedBprimTypes() const override { return kSupportedBPrimTypes; };
+
+    HdResourceRegistrySharedPtr GetResourceRegistry() const override { return nullptr; };
+
+    HdRenderPassSharedPtr CreateRenderPass(HdRenderIndex* index, HdRprimCollection const& collection) override;
+
+    HdInstancer* CreateInstancer(HdSceneDelegate *delegate, SdfPath const& id) override { return nullptr; };
+    void DestroyInstancer(HdInstancer *instancer) override {};
+
+    HdRprim* CreateRprim(TfToken const& typeId, SdfPath const& rprimId) override { return nullptr; };
+    HdSprim* CreateSprim(TfToken const& typeId, SdfPath const& sprimId) override { return nullptr; };
+    HdBprim* CreateBprim(TfToken const& typeId, SdfPath const& bprimId) override { return nullptr; };
+    
+    HdSprim* CreateFallbackSprim(TfToken const& typeId) override { return nullptr; };
+    HdBprim* CreateFallbackBprim(TfToken const& typeId) override { return nullptr; };
+
+    void DestroyRprim(HdRprim* rPrim) override { };
+    void DestroySprim(HdSprim* sprim) override { };
+    void DestroyBprim(HdBprim* bprim) override { };
+
+    void CommitResources(HdChangeTracker *tracker) override { };
+
+    HdRenderParam* GetRenderParam() const override { return nullptr; };
+
+    inline RenderContext* GetRenderContext() { return m_RenderContext; };
+
+private:
+
+    // Reference to the custom Vulkan driver implementation.
+    RenderContext* m_RenderContext;
+
+    HdResourceRegistrySharedPtr m_ResourceRegistry;
+};
+
+// USD Hydra Render Pass
+// ---------------------------------------------------------
+
+class RenderPass final : public HdRenderPass
+{
+public:
+    RenderPass(HdRenderIndex* pRenderIndex, HdRprimCollection const &collection, RenderDelegate* pRenderDelegate);
+    virtual ~RenderPass();
+
+protected:
+
+    void _Execute(HdRenderPassStateSharedPtr const& pRenderPassState, TfTokenVector const &renderTags) override;
+
+private:
+    RenderDelegate* m_Owner;
+
+    Image m_ColorAttachment;
+    Image m_DepthAttachment;
+};
+
 struct SceneParseContext
 {
     RenderContext* pRenderContext;
@@ -130,16 +264,16 @@ struct SceneParseContext
 // Forward-declared utilities. 
 // ---------------------------------------------------------
 
-bool CreatePhysicallyBasedMaterialDescriptorLayout(const VkDevice& vkLogicalDevice, VkDescriptorSetLayout& vkDescriptorSetLayout);
-bool SelectVulkanPhysicalDevice(const VkInstance& vkInstance, const std::vector<const char*> requiredExtensions, VkPhysicalDevice& vkPhysicalDevice);
-bool CreateVulkanLogicalDevice(const VkPhysicalDevice& vkPhysicalDevice, const std::vector<const char*>& requiredExtensions, uint32_t vkGraphicsQueueIndex, VkDevice& vkLogicalDevice);
-bool LoadByteCode(const char* filePath, std::vector<char>& byteCode);
-void SetDefaultRenderState(VkCommandBuffer commandBuffer);
-bool GetVulkanQueueIndices(const VkInstance& vkInstance, const VkPhysicalDevice& vkPhysicalDevice, uint32_t& vkQueueIndexGraphics);
-bool ParseScene(const char* pFilePath, SceneParseContext& context);
-void GetVertexInputLayout(std::vector<VkVertexInputBindingDescription2EXT>& bindings, std::vector<VkVertexInputAttributeDescription2EXT>& attributes);
-bool CreateRenderingAttachments(RenderContext* pRenderContext, Image& colorAttachment, Image& depthAttachment);
-void NameVulkanObject(VkDevice vkLogicalDevice, VkObjectType vkObjectType, uint64_t vkObject, std::string vkObjectName);
+bool CreatePhysicallyBasedMaterialDescriptorLayout  (const VkDevice& vkLogicalDevice, VkDescriptorSetLayout& vkDescriptorSetLayout);
+bool SelectVulkanPhysicalDevice                     (const VkInstance& vkInstance, const std::vector<const char*> requiredExtensions, VkPhysicalDevice& vkPhysicalDevice);
+bool CreateVulkanLogicalDevice                      (const VkPhysicalDevice& vkPhysicalDevice, const std::vector<const char*>& requiredExtensions, uint32_t vkGraphicsQueueIndex, VkDevice& vkLogicalDevice);
+bool LoadByteCode                                   (const char* filePath, std::vector<char>& byteCode);
+void SetDefaultRenderState                          (VkCommandBuffer commandBuffer);
+bool GetVulkanQueueIndices                          (const VkInstance& vkInstance, const VkPhysicalDevice& vkPhysicalDevice, uint32_t& vkQueueIndexGraphics);
+bool ParseScene                                     (const char* pFilePath, SceneParseContext& context);
+void GetVertexInputLayout                           (std::vector<VkVertexInputBindingDescription2EXT>& bindings, std::vector<VkVertexInputAttributeDescription2EXT>& attributes);
+bool CreateRenderingAttachments                     (RenderContext* pRenderContext, Image& colorAttachment, Image& depthAttachment);
+void NameVulkanObject                               (VkDevice vkLogicalDevice, VkObjectType vkObjectType, uint64_t vkObject, std::string vkObjectName);
 
 // Executable implementation.
 // ---------------------------------------------------------
@@ -150,341 +284,81 @@ int main()
     // --------------------------------------
 
     std::unique_ptr<RenderContext> pRenderContext = std::make_unique<RenderContext>(kWindowWidth, kWindowHeight);
+
+    // Create render delegate.
+    // ---------------------
+
+    auto pRenderDelegate = std::make_unique<RenderDelegate>();
+    TF_VERIFY(pRenderDelegate != nullptr);
+
+    // Wrap the RenderContext into a USD Hydra Driver. 
+    // -------------------------------------- 
+
+    HdDriver renderContextHydraDriver(kTokenRenderContextDriver, VtValue(pRenderContext.get()));
     
-    // Configure Descriptor Set Layouts
-    // --------------------------------------
+    // Create render index from the delegate. 
+    // ---------------------
 
-    VkDescriptorSetLayout vkDescriptorSetLayout;
-    Check(CreatePhysicallyBasedMaterialDescriptorLayout(pRenderContext->GetDevice(), vkDescriptorSetLayout), "Failed to create a Vulkan Descriptor Set Layout for Physically Based Materials.");
+    auto pRenderIndex = HdRenderIndex::New(pRenderDelegate.get(), { &renderContextHydraDriver });
+    TF_VERIFY(pRenderIndex != nullptr);
 
-    // Load Scene
-    // ------------------------------------------------
+    // Construct a scene delegate from the stock OpenUSD scene delegate implementation.
+    // ---------------------
 
-    std::vector<std::pair<VkBuffer, VmaAllocation>> dedicatedMemoryIndices;
-    std::vector<std::pair<VkBuffer, VmaAllocation>> dedicatedMemoryVertices;
+    auto pSceneDelegate = new UsdImagingDelegate(pRenderIndex, SdfPath::AbsoluteRootPath());
+    TF_VERIFY(pSceneDelegate != nullptr);
 
-    SceneParseContext sceneContext =
+    // Load a USD Stage.
+    // ---------------------
+
+    auto pUsdStage = pxr::UsdStage::Open("C:\\Development\\MarketScene\\MarketScene.usd");
+    TF_VERIFY(pUsdStage != nullptr);
+
+    // Pipe the USD stage into the scene delegate (will create render primitives in the render delegate).
+    // ---------------------
+
+    pSceneDelegate->Populate(pUsdStage->GetPseudoRoot());
+
+    // Create the render tasks.
+    // ---------------------
+
+    HdxTaskController taskController(pRenderIndex, SdfPath("/taskController"));
     {
-        pRenderContext.get(),
-
-        // Resources
-        dedicatedMemoryIndices,
-        dedicatedMemoryVertices
-    };
-
-    // Check(ParseScene("..\\Assets\\sponza-dabrovic\\sponza.obj", sceneContext), "Failed to read the input scene.");
-    // Check(ParseScene("..\\Assets\\bunny\\bunny.obj", sceneContext), "Failed to read the input scene.");
-    Check(ParseScene("..\\Assets\\dragon\\dragon.obj", sceneContext), "Failed to read the input scene.");
-
-    // Create Rendering Attachments
-    // ------------------------------------------------
-
-    Image colorAttachment;
-    Image depthAttachment;
-    Check(CreateRenderingAttachments(pRenderContext.get(), colorAttachment, depthAttachment), "Failed to create the rendering attachments.");
-
-    // Shader Creation Utility
-    // ------------------------------------------------
-
-    std::map<ShaderID, VkShaderEXT> vkShaderMap;
-
-    auto LoadShader = [&](ShaderID shaderID, const char* filePath, VkShaderCreateInfoEXT vkShaderInfo)
-    {
-        std::vector<char> shaderByteCode;
-        Check(LoadByteCode(filePath, shaderByteCode), std::format("Failed to read shader bytecode: {}", filePath).c_str());
-
-        vkShaderInfo.pName    = "Main";
-        vkShaderInfo.pCode    = shaderByteCode.data();
-        vkShaderInfo.codeSize = shaderByteCode.size();
-        vkShaderInfo.codeType = VK_SHADER_CODE_TYPE_SPIRV_EXT;
-
-        VkShaderEXT vkShader;
-        Check(vkCreateShadersEXT(pRenderContext->GetDevice(), 1u, &vkShaderInfo, nullptr, &vkShader), std::format("Failed to load Vulkan Shader: {}", filePath).c_str());
-
-        if (vkShaderMap.contains(shaderID))
+        auto params = HdxRenderTaskParams();
         {
-            spdlog::critical("Tried to store a Vulkan Shader into an existing shader slot.");
-            exit(1);
+            params.viewport = GfVec4i(0, 0, kWindowWidth, kWindowHeight);
         }
 
-        spdlog::info("Loaded Vulkan Shader: {}", filePath);
-
-        vkShaderMap[shaderID] = vkShader;
-    };
-
-    // Configure Push Constants
-    // --------------------------------------
-
-    VkPushConstantRange vkPushConstants;
-    {
-        vkPushConstants.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-        vkPushConstants.offset     = 0u;
-        vkPushConstants.size       = sizeof(PushConstants);
+        // The "Task Controller" will automatically configure an HdxRenderTask
+        // (which will create and invoke our delegate's renderpass).
+        taskController.SetRenderParams(params);
+        taskController.SetRenderViewport({ 0, 0, kWindowWidth, kWindowHeight });
     }
 
-    // Configure Pipeline Layouts
-    // --------------------------------------
-    
-    VkPipelineLayoutCreateInfo vkPipelineLayoutInfo = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
-    {
-        vkPipelineLayoutInfo.setLayoutCount         = 1u;
-        vkPipelineLayoutInfo.pSetLayouts            = &vkDescriptorSetLayout;
-        vkPipelineLayoutInfo.pushConstantRangeCount = 1u;
-        vkPipelineLayoutInfo.pPushConstantRanges    = &vkPushConstants;
-    }
-    VkPipelineLayout vkPipelineLayout;
-    Check(vkCreatePipelineLayout(pRenderContext->GetDevice(), &vkPipelineLayoutInfo, nullptr, &vkPipelineLayout), "Failed to create the default Vulkan Pipeline Layout");
-    
-    // Create Shader Objects
-    // --------------------------------------
+    // Initialize the Hydra engine. 
+    // ---------------------
 
-    VkShaderCreateInfoEXT vertexShaderInfo = { VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT };
-    {
-        vertexShaderInfo.stage     = VK_SHADER_STAGE_VERTEX_BIT;
-        vertexShaderInfo.nextStage = VK_SHADER_STAGE_FRAGMENT_BIT;
-        
-        vertexShaderInfo.pushConstantRangeCount = 1u;
-        vertexShaderInfo.pPushConstantRanges    = &vkPushConstants;
-        vertexShaderInfo.setLayoutCount         = 0u;
-        vertexShaderInfo.pSetLayouts            = nullptr;
-    }
-    LoadShader(ShaderID::FullscreenTriangleVert, "FullscreenTriangle.vert.spv", vertexShaderInfo);
-    LoadShader(ShaderID::MeshVert,               "Mesh.vert.spv"              , vertexShaderInfo);
-    
-    VkShaderCreateInfoEXT litShaderInfo = { VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT };
-    {
-        litShaderInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-        
-        litShaderInfo.pushConstantRangeCount = 1u;
-        litShaderInfo.pPushConstantRanges    = &vkPushConstants;
-    }
-    LoadShader(ShaderID::LitFrag, "Lit.frag.spv", litShaderInfo);
-
-    // Vertex Input Layout
-    // ------------------------------------------------
-
-    std::vector<VkVertexInputBindingDescription2EXT>   vertexInputBindings;
-    std::vector<VkVertexInputAttributeDescription2EXT> vertexInputAttributes;
-    GetVertexInputLayout(vertexInputBindings, vertexInputAttributes);
-
-    // Configure Push Constants
-    // ------------------------------------------------
-
-    PushConstants pushConstants;
-    {
-        pushConstants._MatrixM  = glm::identity<glm::mat4>();
-        pushConstants._MatrixVP = glm::perspectiveFov(glm::radians(80.0f), 1920.0f, 1080.0f, 0.01f, 1000.0f) * glm::lookAt(glm::vec3(1.0, 0, 1.0), glm::vec3(0, 0, 0), glm::vec3(0, -1, 0));
-        pushConstants._Time     = 1.0;
-    }
+    HdEngine engine;
 
     // Command Recording
     // ------------------------------------------------
 
-    auto ColorAttachmentBarrier = [&](VkCommandBuffer vkCommand, VkImage vkImage, 
-        VkImageLayout         vkLayoutOld, 
-        VkImageLayout         vkLayoutNew, 
-        VkAccessFlags2        vkAccessSrc,
-        VkAccessFlags2        vkAccessDst,
-        VkPipelineStageFlags2 vkStageSrc,
-        VkPipelineStageFlags2 vkStageDst)
-    {
-        VkImageSubresourceRange imageSubresource;
-        {
-            imageSubresource.levelCount     = 1u;
-		    imageSubresource.layerCount     = 1u;
-            imageSubresource.baseMipLevel   = 0u;
-            imageSubresource.baseArrayLayer = 0u;
-		    imageSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-        }
-
-        VkImageMemoryBarrier2 vkImageBarrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };
-        {
-            vkImageBarrier.image                = vkImage;		
-            vkImageBarrier.oldLayout            = vkLayoutOld;
-            vkImageBarrier.newLayout            = vkLayoutNew;
-            vkImageBarrier.srcAccessMask        = vkAccessSrc;
-            vkImageBarrier.dstAccessMask        = vkAccessDst;
-            vkImageBarrier.srcStageMask         = vkStageSrc;
-            vkImageBarrier.dstStageMask         = vkStageDst;
-            vkImageBarrier.srcQueueFamilyIndex  = pRenderContext->GetCommandQueueIndex();
-            vkImageBarrier.dstQueueFamilyIndex  = pRenderContext->GetCommandQueueIndex();
-            vkImageBarrier.subresourceRange     = imageSubresource;
-        }
-
-        VkDependencyInfo vkDependencyInfo = { VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
-        {
-            vkDependencyInfo.imageMemoryBarrierCount = 1u;
-            vkDependencyInfo.pImageMemoryBarriers    = &vkImageBarrier;
-        }   
-        
-        vkCmdPipelineBarrier2(vkCommand, &vkDependencyInfo);
-    };
-
     auto RecordCommands = [&](FrameParams frameParams)
     {
-        // Configure Attachments
-        // --------------------------------------------
+        // Forward the current backbuffer and commandbuffer to the delegate. 
+        // There might be a simpler way to manage this by writing my own HdTask, but
+        // it would require sacrificing the simplicity that HdxTaskController offers.
+        pRenderDelegate->SetRenderSetting(kTokenCurrenFrameParams, VtValue(&frameParams));
 
-        VkRenderingAttachmentInfo colorAttachmentInfo = { VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
-        {
-            colorAttachmentInfo.loadOp      = VK_ATTACHMENT_LOAD_OP_CLEAR;
-            colorAttachmentInfo.storeOp     = VK_ATTACHMENT_STORE_OP_STORE;
-            colorAttachmentInfo.clearValue  = {{{ 0.0, 0.0, 0.0, 1.0 }}};
-            colorAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-            colorAttachmentInfo.imageView   = colorAttachment.imageView;
-        } 
-
-        VkRenderingAttachmentInfo depthAttachmentInfo = { VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
-        {
-            depthAttachmentInfo.loadOp      = VK_ATTACHMENT_LOAD_OP_CLEAR;
-            depthAttachmentInfo.storeOp     = VK_ATTACHMENT_STORE_OP_STORE;
-            depthAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
-            depthAttachmentInfo.imageView   = depthAttachment.imageView;
-            depthAttachmentInfo.clearValue.depthStencil = { 1.0, 0x0 };
-        } 
-
-        // Record
-        // --------------------------------------------
-
-        ColorAttachmentBarrier
-        (
-            frameParams.cmd, colorAttachment.image, 
-            VK_IMAGE_LAYOUT_UNDEFINED, 
-            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 
-            VK_ACCESS_2_NONE, 
-            VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, 
-            VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 
-            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT
-        );
-
-        VkRenderingInfo vkRenderingInfo = { VK_STRUCTURE_TYPE_RENDERING_INFO };
-        {
-            vkRenderingInfo.colorAttachmentCount = 1u;
-            vkRenderingInfo.pColorAttachments    = &colorAttachmentInfo;
-            vkRenderingInfo.pDepthAttachment     = &depthAttachmentInfo;
-            vkRenderingInfo.pStencilAttachment   = VK_NULL_HANDLE;
-            vkRenderingInfo.layerCount           = 1u;
-            vkRenderingInfo.renderArea           = { {0, 0}, { kWindowWidth, kWindowHeight } };
-        }
-        vkCmdBeginRendering(frameParams.cmd, &vkRenderingInfo);
-
-        VkShaderStageFlagBits vkGraphicsShaderStageBits[5] =
-        {
-            VK_SHADER_STAGE_VERTEX_BIT,
-            VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT,
-            VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT,
-            VK_SHADER_STAGE_GEOMETRY_BIT,
-            VK_SHADER_STAGE_FRAGMENT_BIT
-        };
-
-        VkShaderEXT vkGraphicsShaders[5] =
-        {
-            vkShaderMap[ShaderID::MeshVert],
-            VK_NULL_HANDLE,
-            VK_NULL_HANDLE,
-            VK_NULL_HANDLE,
-            vkShaderMap[ShaderID::LitFrag]
-        };
-
-        vkCmdBindShadersEXT(frameParams.cmd, 5u, vkGraphicsShaderStageBits, vkGraphicsShaders);
-
-        SetDefaultRenderState(frameParams.cmd);
-
-        vkCmdPushConstants(frameParams.cmd, vkPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0u, sizeof(PushConstants), &pushConstants);
-
-        vkCmdSetVertexInputEXT(frameParams.cmd, (uint32_t)vertexInputBindings.size(), vertexInputBindings.data(), (uint32_t)vertexInputAttributes.size(), vertexInputAttributes.data());
-
-        for (uint32_t instanceIndex = 0u; instanceIndex < sceneContext.dedicatedMemoryIndices.size(); instanceIndex++)
-        {
-            const auto& indexBuffer  = sceneContext.dedicatedMemoryIndices [instanceIndex];
-            const auto& vertexBuffer = sceneContext.dedicatedMemoryVertices[instanceIndex];
-
-            VmaAllocationInfo allocationInfo;
-            vmaGetAllocationInfo(pRenderContext->GetAllocator(), indexBuffer.second, &allocationInfo);
-
-            vkCmdBindIndexBuffer(frameParams.cmd, indexBuffer.first, 0u, VK_INDEX_TYPE_UINT32);
-
-            VkDeviceSize vertexBufferOffset = 0u;
-            vkCmdBindVertexBuffers(frameParams.cmd, 0u, 1u, &vertexBuffer.first, &vertexBufferOffset);
-            
-            vkCmdDrawIndexed(frameParams.cmd, (uint32_t)allocationInfo.size / sizeof(uint32_t), 1u, 0u, 0u, 0u);
-        }
-
-        vkCmdEndRendering(frameParams.cmd);
-
-        // Copy the internal color attachment to back buffer. 
-
-        ColorAttachmentBarrier
-        (
-            frameParams.cmd, colorAttachment.image, 
-            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 
-            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, 
-            VK_ACCESS_2_NONE, 
-            VK_ACCESS_2_MEMORY_READ_BIT, 
-            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, 
-            VK_PIPELINE_STAGE_2_TRANSFER_BIT
-        );
-
-        ColorAttachmentBarrier
-        (
-            frameParams.cmd, frameParams.backBuffer,
-            VK_IMAGE_LAYOUT_UNDEFINED, 
-            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 
-            VK_ACCESS_2_MEMORY_READ_BIT, 
-            VK_ACCESS_2_MEMORY_WRITE_BIT, 
-            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, 
-            VK_PIPELINE_STAGE_2_TRANSFER_BIT
-        );
-
-        VkImageCopy backBufferCopy = {};
-        {
-            backBufferCopy.extent         = { kWindowWidth, kWindowHeight, 1u};
-            backBufferCopy.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0u, 0u, 1u };
-            backBufferCopy.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0u, 0u, 1u };
-        }
-        vkCmdCopyImage(frameParams.cmd, colorAttachment.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, frameParams.backBuffer, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1u, &backBufferCopy);
-
-        ColorAttachmentBarrier
-        (
-            frameParams.cmd, frameParams.backBuffer, 
-            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 
-            VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, 
-            VK_ACCESS_2_MEMORY_WRITE_BIT, 
-            VK_ACCESS_2_MEMORY_READ_BIT, 
-            VK_PIPELINE_STAGE_2_TRANSFER_BIT, 
-            VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT
-        );
+        // Invoke Hydra!
+        auto renderTasks = taskController.GetRenderingTasks();
+        engine.Execute(pRenderIndex, &renderTasks);
     };
     
     // Kick off render-loop.
     // ------------------------------------------------
 
     pRenderContext->Dispatch(RecordCommands);
-
-    // Release
-    // ------------------------------------------------
-
-    vkDeviceWaitIdle(pRenderContext->GetDevice());
-
-    vkDestroyImageView(pRenderContext->GetDevice(), colorAttachment.imageView, nullptr);
-    vkDestroyImageView(pRenderContext->GetDevice(), depthAttachment.imageView, nullptr);
-
-    vmaDestroyImage(pRenderContext->GetAllocator(), colorAttachment.image, colorAttachment.imageAllocation);
-    vmaDestroyImage(pRenderContext->GetAllocator(), depthAttachment.image, depthAttachment.imageAllocation);
-
-    for (auto& indexBuffer : sceneContext.dedicatedMemoryIndices)
-        vmaDestroyBuffer(pRenderContext->GetAllocator(), indexBuffer.first, indexBuffer.second);
-
-    for (auto& vertexBuffer : sceneContext.dedicatedMemoryVertices)
-        vmaDestroyBuffer(pRenderContext->GetAllocator(), vertexBuffer.first, vertexBuffer.second);
-
-    vkDestroyDescriptorSetLayout(pRenderContext->GetDevice(), vkDescriptorSetLayout, nullptr);
-    vkDestroyPipelineLayout     (pRenderContext->GetDevice(), vkPipelineLayout,      nullptr);
-
-    for (auto& shader : vkShaderMap)
-        vkDestroyShaderEXT(pRenderContext->GetDevice(), shader.second, nullptr);
-
-    return 0;
 }
 
 // Render Context Implementation
@@ -1096,18 +970,18 @@ bool GetVulkanQueueIndices(const VkInstance& vkInstance, const VkPhysicalDevice&
 bool ParseScene(const char* pFilePath, SceneParseContext& context)
 {
     auto pRenderContext = context.pRenderContext;
-    
-    tinyobj::ObjReader reader;
 
-    if (!reader.ParseFromFile(pFilePath))
-        return false;
+    return false;
 
-    if (!reader.Warning().empty())
-        spdlog::warn("[tinyobj] [{}]:\n\n{}", pFilePath, reader.Warning());
+    // if (!reader.ParseFromFile(pFilePath))
+    //     return false;
 
-    const auto& shapes    = reader.GetShapes();
-    const auto& attrib    = reader.GetAttrib();
-    const auto& materials = reader.GetMaterials();
+    // if (!reader.Warning().empty())
+    //     spdlog::warn("[tinyobj] [{}]:\n\n{}", pFilePath, reader.Warning());
+
+    // const auto& shapes    = reader.GetShapes();
+    // const auto& attrib    = reader.GetAttrib();
+    // const auto& materials = reader.GetMaterials();
 
     /*
     for (const auto& material : materials)
@@ -1126,6 +1000,7 @@ bool ParseScene(const char* pFilePath, SceneParseContext& context)
     }
     */
 
+    /*
     std::vector<std::pair<VkBuffer, VmaAllocation>> stagingMemoryIndices;
     std::vector<std::pair<VkBuffer, VmaAllocation>> stagingMemoryVertices;
 
@@ -1271,6 +1146,7 @@ bool ParseScene(const char* pFilePath, SceneParseContext& context)
     }
 
     return true;
+    */
 }
 
 void GetVertexInputLayout(std::vector<VkVertexInputBindingDescription2EXT>& bindings, std::vector<VkVertexInputAttributeDescription2EXT>& attributes)
@@ -1323,4 +1199,192 @@ void NameVulkanObject(VkDevice vkLogicalDevice, VkObjectType vkObjectType, uint6
     attachmentNameInfo.objectHandle = vkObject;
         
     vkSetDebugUtilsObjectNameEXT(vkLogicalDevice, &attachmentNameInfo);
+}
+
+// Render Delegate Implementation
+// ------------------------------------------------------------
+
+void RenderDelegate::SetDrivers(HdDriverVector const& drivers)
+{
+    for (const auto& driver : drivers)
+    {
+        if (driver->name == kTokenRenderContextDriver)
+            m_RenderContext = driver->driver.UncheckedGet<RenderContext*>();
+    }
+
+    Check(m_RenderContext, "Failed to find the custom Vulkan driver for Hydra.");
+}
+
+HdRenderPassSharedPtr RenderDelegate::CreateRenderPass(HdRenderIndex* pRenderIndex, HdRprimCollection const& collection)
+{
+    spdlog::info("Registering Hydra Renderpass.");
+    return HdRenderPassSharedPtr(new RenderPass(pRenderIndex, collection, this));  
+}
+
+// Render Pass Implementation
+// ------------------------------------------------------------
+
+RenderPass::RenderPass(HdRenderIndex* pRenderIndex, HdRprimCollection const &collection, RenderDelegate* pRenderDelegate) : HdRenderPass(pRenderIndex, collection), m_Owner(pRenderDelegate)
+{
+    // Grab the render context.
+    auto pRenderContext = m_Owner->GetRenderContext();
+
+    // Create Rendering Attachments
+    // ------------------------------------------------
+
+    Check(CreateRenderingAttachments(pRenderContext, m_ColorAttachment, m_DepthAttachment), "Failed to create the rendering attachments.");
+}
+
+RenderPass::~RenderPass()
+{
+    // Grab the render context.
+    auto pRenderContext = m_Owner->GetRenderContext();
+
+    vkDeviceWaitIdle(pRenderContext->GetDevice());
+
+    vkDestroyImageView(pRenderContext->GetDevice(), m_ColorAttachment.imageView, nullptr);
+    vkDestroyImageView(pRenderContext->GetDevice(), m_DepthAttachment.imageView, nullptr);
+
+    vmaDestroyImage(pRenderContext->GetAllocator(), m_ColorAttachment.image, m_ColorAttachment.imageAllocation);
+    vmaDestroyImage(pRenderContext->GetAllocator(), m_DepthAttachment.image, m_DepthAttachment.imageAllocation);
+}
+
+void RenderPass::_Execute(HdRenderPassStateSharedPtr const& renderPassState, TfTokenVector const &renderTags)
+{   
+    // Grab the render context.
+    auto pRenderContext = m_Owner->GetRenderContext();
+
+    // Grab a handle to the current frame. 
+    auto pFrame = m_Owner->GetRenderSetting(kTokenCurrenFrameParams).UncheckedGet<FrameParams*>();
+
+    auto ColorAttachmentBarrier = [&](VkCommandBuffer vkCommand, VkImage vkImage, 
+        VkImageLayout         vkLayoutOld, 
+        VkImageLayout         vkLayoutNew, 
+        VkAccessFlags2        vkAccessSrc,
+        VkAccessFlags2        vkAccessDst,
+        VkPipelineStageFlags2 vkStageSrc,
+        VkPipelineStageFlags2 vkStageDst)
+    {
+        VkImageSubresourceRange imageSubresource;
+        {
+            imageSubresource.levelCount     = 1u;
+		    imageSubresource.layerCount     = 1u;
+            imageSubresource.baseMipLevel   = 0u;
+            imageSubresource.baseArrayLayer = 0u;
+		    imageSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        }
+
+        VkImageMemoryBarrier2 vkImageBarrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };
+        {
+            vkImageBarrier.image                = vkImage;		
+            vkImageBarrier.oldLayout            = vkLayoutOld;
+            vkImageBarrier.newLayout            = vkLayoutNew;
+            vkImageBarrier.srcAccessMask        = vkAccessSrc;
+            vkImageBarrier.dstAccessMask        = vkAccessDst;
+            vkImageBarrier.srcStageMask         = vkStageSrc;
+            vkImageBarrier.dstStageMask         = vkStageDst;
+            vkImageBarrier.srcQueueFamilyIndex  = pRenderContext->GetCommandQueueIndex();
+            vkImageBarrier.dstQueueFamilyIndex  = pRenderContext->GetCommandQueueIndex();
+            vkImageBarrier.subresourceRange     = imageSubresource;
+        }
+
+        VkDependencyInfo vkDependencyInfo = { VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
+        {
+            vkDependencyInfo.imageMemoryBarrierCount = 1u;
+            vkDependencyInfo.pImageMemoryBarriers    = &vkImageBarrier;
+        }   
+        
+        vkCmdPipelineBarrier2(vkCommand, &vkDependencyInfo);
+    };
+
+    // Configure Attachments
+    // --------------------------------------------
+
+    VkRenderingAttachmentInfo colorAttachmentInfo = { VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
+    {
+        colorAttachmentInfo.loadOp      = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        colorAttachmentInfo.storeOp     = VK_ATTACHMENT_STORE_OP_STORE;
+        colorAttachmentInfo.clearValue  = {{{ 0.25, 0.5, 1.0, 1.0 }}};
+        colorAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        colorAttachmentInfo.imageView   = m_ColorAttachment.imageView;
+    } 
+
+    VkRenderingAttachmentInfo depthAttachmentInfo = { VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
+    {
+        depthAttachmentInfo.loadOp      = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        depthAttachmentInfo.storeOp     = VK_ATTACHMENT_STORE_OP_STORE;
+        depthAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+        depthAttachmentInfo.imageView   = m_DepthAttachment.imageView;
+        depthAttachmentInfo.clearValue.depthStencil = { 1.0, 0x0 };
+    } 
+
+    // Record
+    // --------------------------------------------
+
+    ColorAttachmentBarrier
+    (
+        pFrame->cmd, m_ColorAttachment.image, 
+        VK_IMAGE_LAYOUT_UNDEFINED, 
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 
+        VK_ACCESS_2_NONE, 
+        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, 
+        VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 
+        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT
+    );
+
+    VkRenderingInfo vkRenderingInfo = { VK_STRUCTURE_TYPE_RENDERING_INFO };
+    {
+        vkRenderingInfo.colorAttachmentCount = 1u;
+        vkRenderingInfo.pColorAttachments    = &colorAttachmentInfo;
+        vkRenderingInfo.pDepthAttachment     = &depthAttachmentInfo;
+        vkRenderingInfo.pStencilAttachment   = VK_NULL_HANDLE;
+        vkRenderingInfo.layerCount           = 1u;
+        vkRenderingInfo.renderArea           = { {0, 0}, { kWindowWidth, kWindowHeight } };
+    }
+    vkCmdBeginRendering(pFrame->cmd, &vkRenderingInfo);
+
+    vkCmdEndRendering(pFrame->cmd);
+
+    // Copy the internal color attachment to back buffer. 
+
+    ColorAttachmentBarrier
+    (
+        pFrame->cmd, m_ColorAttachment.image, 
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 
+        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, 
+        VK_ACCESS_2_NONE, 
+        VK_ACCESS_2_MEMORY_READ_BIT, 
+        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, 
+        VK_PIPELINE_STAGE_2_TRANSFER_BIT
+    );
+
+    ColorAttachmentBarrier
+    (
+        pFrame->cmd, pFrame->backBuffer,
+        VK_IMAGE_LAYOUT_UNDEFINED, 
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 
+        VK_ACCESS_2_MEMORY_READ_BIT, 
+        VK_ACCESS_2_MEMORY_WRITE_BIT, 
+        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, 
+        VK_PIPELINE_STAGE_2_TRANSFER_BIT
+    );
+
+    VkImageCopy backBufferCopy = {};
+    {
+        backBufferCopy.extent         = { kWindowWidth, kWindowHeight, 1u};
+        backBufferCopy.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0u, 0u, 1u };
+        backBufferCopy.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0u, 0u, 1u };
+    }
+    vkCmdCopyImage(pFrame->cmd, m_ColorAttachment.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, pFrame->backBuffer, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1u, &backBufferCopy);
+
+    ColorAttachmentBarrier
+    (
+        pFrame->cmd, pFrame->backBuffer, 
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 
+        VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, 
+        VK_ACCESS_2_MEMORY_WRITE_BIT, 
+        VK_ACCESS_2_MEMORY_READ_BIT, 
+        VK_PIPELINE_STAGE_2_TRANSFER_BIT, 
+        VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT
+    );
 }
