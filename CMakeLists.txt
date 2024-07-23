@@ -11,7 +11,6 @@ project(${PROJECT_NAME} VERSION 1.0)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
-
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Check for the USD Installation Environment variable
@@ -48,12 +47,21 @@ find_package(pxr                   REQUIRED)
 
 add_executable(${PROJECT_NAME} 
     Source/Main.cpp
+    Source/Precompiled.cpp
+    Source/RenderContext.cpp
+    Source/RenderDelegate.cpp
+    Source/RenderPass.cpp
+    Source/Mesh.cpp
+    Source/Common.cpp
 )
+
+target_precompile_headers(${PROJECT_NAME} PRIVATE Source/Include/Precompiled.h)
 
 # Include
 # --------------------------------
 
-target_include_directories(${PROJECT_NAME} PRIVATE 
+target_include_directories(${PROJECT_NAME} PRIVATE
+    Source/Include
     ${Stb_INCLUDE_DIR}
     ${PXR_INCLUDE_DIR}
 )
@@ -75,3 +83,13 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 # --------------------------------
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE _SILENCE_CXX20_OLD_SHARED_PTR_ATOMIC_SUPPORT_DEPRECATION_WARNING)
+
+# LivePP Configuration
+# --------------------------------
+
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+    target_compile_options     (${PROJECT_NAME} PRIVATE /Zi /Gm-)
+    target_link_options        (${PROJECT_NAME} PRIVATE /FUNCTIONPADMIN /OPT:NOREF /OPT:NOICF /DEBUG:FULL)
+    target_include_directories (${PROJECT_NAME} PRIVATE External/)
+    target_compile_definitions (${PROJECT_NAME} PRIVATE USE_LIVEPP)
+endif()
