@@ -51,7 +51,7 @@ int main()
     // Load a USD Stage.
     // ---------------------
 
-    auto pUsdStage = pxr::UsdStage::Open("C:\\Development\\MarketScene\\MarketScene.usd");
+    auto pUsdStage = pxr::UsdStage::Open("..\\Assets\\dragon\\dragon.usd");
     TF_VERIFY(pUsdStage != nullptr);
 
     // Pipe the USD stage into the scene delegate (will create render primitives in the render delegate).
@@ -99,6 +99,11 @@ int main()
     // ------------------------------------------------
 
     pRenderContext->Dispatch(RecordCommands);
+
+    // Progarm is exiting, free GPU memory.
+    // ------------------------------------------------
+
+    pRenderDelegate->GetResourceRegistry()->GarbageCollect();
 
     // Destroy LivePP Agent.
     // ------------------------------------------------

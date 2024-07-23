@@ -1,12 +1,20 @@
-#ifndef PCH_H
-#define PCH_H
+#ifndef PRECOMPILED_H
+#define PRECOMPILED_H
+
+#ifdef _DEBUG
+    // Logging of VMA memory leaks in debug mode.
+    #define VMA_LEAK_LOG_FORMAT(format, ...) do { \
+        printf((format), __VA_ARGS__); \
+        printf("\n"); \
+    } while(false)
+#endif
 
 #include <volk.h>
-#include <vk_mem_alloc.h>
-#include <tiny_obj_loader.h>
 #include <stb_image.h>
 #include <spdlog/spdlog.h>
 #include <GLFW/glfw3.h>
+#include <vk_mem_alloc.h>
+#include <tiny_obj_loader.h>
 
 #include <fstream>
 #include <intrin.h>

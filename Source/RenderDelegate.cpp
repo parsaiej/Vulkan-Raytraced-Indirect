@@ -1,5 +1,8 @@
 #include <RenderDelegate.h>
 #include <RenderPass.h>
+#include <RenderContext.h>
+#include <ResourceRegistry.h>
+#include <Scene.h>
 #include <Mesh.h>
 #include <Common.h>
 
@@ -15,6 +18,8 @@ void RenderDelegate::SetDrivers(HdDriverVector const& drivers)
     }
 
     Check(m_RenderContext, "Failed to find the custom Vulkan driver for Hydra.");
+    
+    m_ResourceRegistry = std::make_shared<ResourceRegistry>(m_RenderContext);
 }
 
 HdRenderPassSharedPtr RenderDelegate::CreateRenderPass(HdRenderIndex* pRenderIndex, HdRprimCollection const& collection)
@@ -47,4 +52,10 @@ HdSprim* RenderDelegate::CreateSprim(TfToken const& typeId, SdfPath const& rprim
     spdlog::info("Parsing Hydra Camera Sprim.");
 
     return nullptr;
+}
+
+void RenderDelegate::CommitResources(HdChangeTracker* pChangeTracker)
+{
+    // Upload resources to GPU. 
+    m_ResourceRegistry->Commit();
 }

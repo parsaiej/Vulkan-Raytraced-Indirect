@@ -1,7 +1,9 @@
 #include <RenderPass.h>
 #include <RenderContext.h>
 #include <RenderDelegate.h>
+#include <ResourceRegistry.h>
 #include <Scene.h>
+#include <Mesh.h>
 
 // Render Pass Implementation
 // ------------------------------------------------------------
@@ -15,6 +17,94 @@ RenderPass::RenderPass(HdRenderIndex* pRenderIndex, HdRprimCollection const &col
     // ------------------------------------------------
 
     Check(CreateRenderingAttachments(pRenderContext, m_ColorAttachment, m_DepthAttachment), "Failed to create the rendering attachments.");
+    
+    // Configure Descriptor Set Layouts
+    // --------------------------------------
+
+    Check(CreatePhysicallyBasedMaterialDescriptorLayout(pRenderContext->GetDevice(), m_DescriptorSetLayout), "Failed to create a Vulkan Descriptor Set Layout for Physically Based Materials.");
+
+    // Shader Creation Utility
+    // ------------------------------------------------
+
+    auto LoadShader = [&](ShaderID shaderID, const char* filePath, VkShaderCreateInfoEXT vkShaderInfo)
+    {
+        std::vector<char> shaderByteCode;
+        Check(LoadByteCode(filePath, shaderByteCode), std::format("Failed to read shader bytecode: {}", filePath).c_str());
+
+        vkShaderInfo.pName    = "Main";
+        vkShaderInfo.pCode    = shaderByteCode.data();
+        vkShaderInfo.codeSize = shaderByteCode.size();
+        vkShaderInfo.codeType = VK_SHADER_CODE_TYPE_SPIRV_EXT;
+
+        VkShaderEXT vkShader;
+        Check(vkCreateShadersEXT(pRenderContext->GetDevice(), 1u, &vkShaderInfo, nullptr, &vkShader), std::format("Failed to load Vulkan Shader: {}", filePath).c_str());
+        Check(!m_ShaderMap.contains(shaderID), "Tried to store a Vulkan Shader into an existing shader slot.");
+
+        spdlog::info("Loaded Vulkan Shader: {}", filePath);
+
+        m_ShaderMap[shaderID] = vkShader;
+    };
+
+    // Configure Push Constants
+    // --------------------------------------
+
+    VkPushConstantRange vkPushConstants;
+    {
+        vkPushConstants.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+        vkPushConstants.offset     = 0u;
+        vkPushConstants.size       = sizeof(PushConstants);
+    }
+
+    // Configure Pipeline Layouts
+    // --------------------------------------
+    
+    VkPipelineLayoutCreateInfo vkPipelineLayoutInfo = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
+    {
+        vkPipelineLayoutInfo.setLayoutCount         = 1u;
+        vkPipelineLayoutInfo.pSetLayouts            = &m_DescriptorSetLayout;
+        vkPipelineLayoutInfo.pushConstantRangeCount = 1u;
+        vkPipelineLayoutInfo.pPushConstantRanges    = &vkPushConstants;
+    }
+    Check(vkCreatePipelineLayout(pRenderContext->GetDevice(), &vkPipelineLayoutInfo, nullptr, &m_PipelineLayout), "Failed to create the default Vulkan Pipeline Layout");
+    
+    // Create Shader Objects
+    // --------------------------------------
+
+    VkShaderCreateInfoEXT vertexShaderInfo = { VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT };
+    {
+        vertexShaderInfo.stage     = VK_SHADER_STAGE_VERTEX_BIT;
+        vertexShaderInfo.nextStage = VK_SHADER_STAGE_FRAGMENT_BIT;
+        
+        vertexShaderInfo.pushConstantRangeCount = 1u;
+        vertexShaderInfo.pPushConstantRanges    = &vkPushConstants;
+        vertexShaderInfo.setLayoutCount         = 0u;
+        vertexShaderInfo.pSetLayouts            = nullptr;
+    }
+    LoadShader(ShaderID::FullscreenTriangleVert, "FullscreenTriangle.vert.spv", vertexShaderInfo);
+    LoadShader(ShaderID::MeshVert,               "Mesh.vert.spv"              , vertexShaderInfo);
+    
+    VkShaderCreateInfoEXT litShaderInfo = { VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT };
+    {
+        litShaderInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+        
+        litShaderInfo.pushConstantRangeCount = 1u;
+        litShaderInfo.pPushConstantRanges    = &vkPushConstants;
+    }
+    LoadShader(ShaderID::LitFrag, "Lit.frag.spv", litShaderInfo);
+
+    // Vertex Input Layout
+    // ------------------------------------------------
+
+    GetVertexInputLayout(m_VertexInputBindings, m_VertexInputAttributes);
+
+    // Configure Push Constants
+    // ------------------------------------------------
+
+    {
+        m_PushConstants._MatrixM  = glm::identity<glm::mat4>();
+        m_PushConstants._MatrixVP = glm::perspectiveFov(glm::radians(80.0f), 1920.0f, 1080.0f, 0.01f, 1000.0f) * glm::lookAt(glm::vec3(1.0, 0, 1.0), glm::vec3(0, 0, 0), glm::vec3(0, -1, 0));
+        m_PushConstants._Time     = 1.0;
+    }
 }
 
 RenderPass::~RenderPass()
@@ -29,6 +119,12 @@ RenderPass::~RenderPass()
 
     vmaDestroyImage(pRenderContext->GetAllocator(), m_ColorAttachment.image, m_ColorAttachment.imageAllocation);
     vmaDestroyImage(pRenderContext->GetAllocator(), m_DepthAttachment.image, m_DepthAttachment.imageAllocation);
+
+    vkDestroyPipelineLayout(pRenderContext->GetDevice(),      m_PipelineLayout,      nullptr);
+    vkDestroyDescriptorSetLayout(pRenderContext->GetDevice(), m_DescriptorSetLayout, nullptr);
+
+    for (auto& shader : m_ShaderMap)
+        vkDestroyShaderEXT(pRenderContext->GetDevice(), shader.second, nullptr);
 }
 
 void RenderPass::_Execute(HdRenderPassStateSharedPtr const& renderPassState, TfTokenVector const &renderTags)
@@ -125,9 +221,49 @@ void RenderPass::_Execute(HdRenderPassStateSharedPtr const& renderPassState, TfT
     }
     vkCmdBeginRendering(pFrame->cmd, &vkRenderingInfo);
 
-    for (const auto& pMesh : m_Owner->GetRenderContext()->GetScene()->GetMeshList())
+    VkShaderStageFlagBits vkGraphicsShaderStageBits[5] =
     {
-        spdlog::info("Rendering Mesh...");
+        VK_SHADER_STAGE_VERTEX_BIT,
+        VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT,
+        VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT,
+        VK_SHADER_STAGE_GEOMETRY_BIT,
+        VK_SHADER_STAGE_FRAGMENT_BIT
+    };
+
+    VkShaderEXT vkGraphicsShaders[5] =
+    {
+        m_ShaderMap[ShaderID::MeshVert],
+        VK_NULL_HANDLE,
+        VK_NULL_HANDLE,
+        VK_NULL_HANDLE,
+        m_ShaderMap[ShaderID::LitFrag]
+    };
+
+    vkCmdBindShadersEXT(pFrame->cmd, 5u, vkGraphicsShaderStageBits, vkGraphicsShaders);
+
+    SetDefaultRenderState(pFrame->cmd);
+
+    vkCmdPushConstants(pFrame->cmd, m_PipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0u, sizeof(PushConstants), &m_PushConstants);
+
+    vkCmdSetVertexInputEXT(pFrame->cmd, (uint32_t)m_VertexInputBindings.size(), m_VertexInputBindings.data(), (uint32_t)m_VertexInputAttributes.size(), m_VertexInputAttributes.data());
+
+    auto pScene     = pRenderContext->GetScene();
+    auto pResources = std::static_pointer_cast<ResourceRegistry>(m_Owner->GetResourceRegistry());
+
+    for (const auto& pMesh : pScene->GetMeshList())
+    {
+        std::pair<VkBuffer, VmaAllocation> vertexBuffer, indexBuffer;
+        pResources->GetMeshResources(pMesh->GetResourceHandle(), vertexBuffer, indexBuffer); 
+
+        VmaAllocationInfo allocationInfo;
+        vmaGetAllocationInfo(pRenderContext->GetAllocator(), indexBuffer.second, &allocationInfo);
+
+        vkCmdBindIndexBuffer(pFrame->cmd, indexBuffer.first, 0u, VK_INDEX_TYPE_UINT32);
+
+        VkDeviceSize vertexBufferOffset = 0u;
+        vkCmdBindVertexBuffers(pFrame->cmd, 0u, 1u, &vertexBuffer.first, &vertexBufferOffset);
+        
+        vkCmdDrawIndexed(pFrame->cmd, (uint32_t)allocationInfo.size / sizeof(uint32_t), 1u, 0u, 0u, 0u);
     }
 
     vkCmdEndRendering(pFrame->cmd);

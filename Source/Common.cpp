@@ -284,7 +284,7 @@ void GetVertexInputLayout(std::vector<VkVertexInputBindingDescription2EXT>& bind
     VkVertexInputBindingDescription2EXT binding = { VK_STRUCTURE_TYPE_VERTEX_INPUT_BINDING_DESCRIPTION_2_EXT };
     {
         binding.binding   = 0u;
-        binding.stride    = sizeof(Vertex);
+        binding.stride    = sizeof(GfVec3f); // sizeof(Vertex);
         binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
         binding.divisor   = 1u;
     }
@@ -296,28 +296,28 @@ void GetVertexInputLayout(std::vector<VkVertexInputBindingDescription2EXT>& bind
     {
         attribute.binding  = 0u;
         attribute.location = 0u;
-        attribute.offset   = offsetof(Vertex, positionOS);
+        attribute.offset   = 0u; // offsetof(Vertex, positionOS);
         attribute.format   = VK_FORMAT_R32G32B32_SFLOAT;
     }
     attributes.push_back( attribute );
 
-    // Normal
-    {
-        attribute.binding  = 0u;
-        attribute.location = 1u;
-        attribute.offset   = offsetof(Vertex, normalOS);
-        attribute.format   = VK_FORMAT_R32G32B32_SFLOAT;
-    }
-    attributes.push_back( attribute );
+    // // Normal
+    // {
+    //     attribute.binding  = 0u;
+    //     attribute.location = 1u;
+    //     attribute.offset   = offsetof(Vertex, normalOS);
+    //     attribute.format   = VK_FORMAT_R32G32B32_SFLOAT;
+    // }
+    // attributes.push_back( attribute );
 
-    // Texcoord
-    {
-        attribute.binding  = 0u;
-        attribute.location = 2u;
-        attribute.offset   = offsetof(Vertex, texCoord0);
-        attribute.format   = VK_FORMAT_R32G32_SFLOAT;
-    }
-    attributes.push_back( attribute );
+    // // Texcoord
+    // {
+    //     attribute.binding  = 0u;
+    //     attribute.location = 2u;
+    //     attribute.offset   = offsetof(Vertex, texCoord0);
+    //     attribute.format   = VK_FORMAT_R32G32_SFLOAT;
+    // }
+    // attributes.push_back( attribute );
 }
 
 void NameVulkanObject(VkDevice vkLogicalDevice, VkObjectType vkObjectType, uint64_t vkObject, std::string vkObjectName)

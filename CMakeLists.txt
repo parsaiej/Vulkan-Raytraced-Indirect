@@ -51,6 +51,7 @@ add_executable(${PROJECT_NAME}
     Source/RenderContext.cpp
     Source/RenderDelegate.cpp
     Source/RenderPass.cpp
+    Source/ResourceRegistry.cpp
     Source/Mesh.cpp
     Source/Common.cpp
 )

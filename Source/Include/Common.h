@@ -12,16 +12,6 @@
     inline void Check(bool     a, const char* b) { if (a != true)       { spdlog::critical(b); exit(1); } }
 #endif
 
-// Index of shaders used by this application.
-// ---------------------------------------------------------
-
-enum ShaderID
-{
-    FullscreenTriangleVert,
-    LitFrag,
-    MeshVert
-};
-
 // Common parameters pushed to all shaders.
 // ---------------------------------------------------------
 

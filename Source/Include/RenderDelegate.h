@@ -2,6 +2,7 @@
 #define RENDER_DELEGATE_H
 
 class RenderContext;
+class ResourceRegistry;
 
 // USD Hydra Render Delegate
 // ---------------------------------------------------------
@@ -37,7 +38,7 @@ public:
     const TfTokenVector& GetSupportedSprimTypes() const override { return kSupportedSPrimTypes; };
     const TfTokenVector& GetSupportedBprimTypes() const override { return kSupportedBPrimTypes; };
 
-    HdResourceRegistrySharedPtr GetResourceRegistry() const override { return nullptr; };
+    HdResourceRegistrySharedPtr GetResourceRegistry() const override { return m_ResourceRegistry; };
 
     HdRenderPassSharedPtr CreateRenderPass(HdRenderIndex* index, HdRprimCollection const& collection) override;
 
@@ -55,7 +56,7 @@ public:
     void DestroySprim(HdSprim* sprim) override { };
     void DestroyBprim(HdBprim* bprim) override { };
 
-    void CommitResources(HdChangeTracker *tracker) override { };
+    void CommitResources(HdChangeTracker* pTracker) override;
 
     HdRenderParam* GetRenderParam() const override { return nullptr; };
 
