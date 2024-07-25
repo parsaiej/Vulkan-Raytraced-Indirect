@@ -5,15 +5,19 @@
 #include <Scene.h>
 #include <Common.h>
 
-Mesh::Mesh(SdfPath const& rprimId, RenderDelegate* pRenderDelegate) : HdMesh(rprimId), m_Owner(pRenderDelegate)
-{
-    
-}
+#include <random>
 
-Mesh::~Mesh()
-{
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtx/string_cast.hpp>
 
-} 
+// Create a random device to seed the random number generator
+std::random_device rd;
+
+// Create a Mersenne Twister random number generator
+std::mt19937 gen(rd());
+
+// Create a uniform real distribution to generate floats between 0 and 1
+std::uniform_real_distribution<> dis(0.0, 1.0);
 
 HdDirtyBits Mesh::GetInitialDirtyBitsMask() const
 {
@@ -28,9 +32,15 @@ void Mesh::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParams, H
     std::lock_guard<std::mutex> renderContextLock(m_Owner->GetRenderContextMutex());
     
     SdfPath id = GetId();
+
+    // Set debug color
+    {
+        m_DebugColor =  { dis(gen), dis(gen), dis(gen) };
+    }
     
-    auto pPointList = pSceneDelegate->Get(id, HdTokens->points).Get<VtVec3fArray>();
-    auto pIndexList = VtVec3iArray();
+    auto pPointList  = pSceneDelegate->Get(id, HdTokens->points).Get<VtVec3fArray>();
+    auto pNormalList = pSceneDelegate->Get(id, HdTokens->normals).Get<VtVec3fArray>();
+    auto pIndexList  = VtVec3iArray();
 
     // Compute the triangulated indices from the mesh topology.
     HdMeshTopology topology = pSceneDelegate->GetMeshTopology(id);
@@ -40,12 +50,16 @@ void Mesh::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParams, H
     
     VtIntArray trianglePrimitiveParams;
     meshUtil.ComputeTriangleIndices(&pIndexList, &trianglePrimitiveParams);
-
+ 
     // Obtain the resource registry. 
     auto pResourceRegistry = std::static_pointer_cast<ResourceRegistry>(pSceneDelegate->GetRenderIndex().GetResourceRegistry());
     {
-        m_ResourceHandle = pResourceRegistry->PushMeshRequest( { id, pPointList, pIndexList} );
+        m_ResourceHandle = pResourceRegistry->PushMeshRequest( { id, pPointList, pNormalList, pIndexList} );
     }
+
+    // Get the world matrix.
+    // m_LocalToWorld = glm::transpose(glm::make_mat4(pSceneDelegate->GetTransform(id).data()));
+    m_LocalToWorld = (GfMatrix4f)pSceneDelegate->GetTransform(id);
 
     m_Owner->GetRenderContext()->GetScene()->AddMesh(this);
 

@@ -5,6 +5,7 @@
 #include <Scene.h>
 #include <Mesh.h>
 #include <Common.h>
+#include <Camera.h>
 
 // Render Delegate Implementation
 // ------------------------------------------------------------
@@ -24,7 +25,6 @@ void RenderDelegate::SetDrivers(HdDriverVector const& drivers)
 
 HdRenderPassSharedPtr RenderDelegate::CreateRenderPass(HdRenderIndex* pRenderIndex, HdRprimCollection const& collection)
 {
-    spdlog::info("Registering Hydra Renderpass.");
     return HdRenderPassSharedPtr(new RenderPass(pRenderIndex, collection, this));  
 }
 
@@ -35,23 +35,19 @@ HdRprim* RenderDelegate::CreateRprim(TfToken const& typeId, SdfPath const& rprim
         spdlog::warn("Skipping non-mesh Hydra Rprim.");
         return nullptr;
     }
-    
-    spdlog::info("Parsing Hydra Mesh Rprim.");
 
     return new Mesh(rprimId, this);
 }
 
-HdSprim* RenderDelegate::CreateSprim(TfToken const& typeId, SdfPath const& rprimId)
+HdSprim* RenderDelegate::CreateSprim(TfToken const& typeId, SdfPath const& sprimId)
 {
     if (typeId != HdPrimTypeTokens->camera)
     {
         spdlog::warn("Skipping non-camera Hydra Sprim.");
         return nullptr;
     }
-    
-    spdlog::info("Parsing Hydra Camera Sprim.");
 
-    return nullptr;
+    return new Camera(sprimId, this);
 }
 
 void RenderDelegate::CommitResources(HdChangeTracker* pChangeTracker)

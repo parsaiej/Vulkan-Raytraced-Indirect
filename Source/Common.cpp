@@ -247,7 +247,7 @@ void SetDefaultRenderState(VkCommandBuffer commandBuffer)
     vkCmdSetLogicOpEnableEXT          (commandBuffer, VK_FALSE);
     vkCmdSetRasterizationSamplesEXT   (commandBuffer, VK_SAMPLE_COUNT_1_BIT);
     vkCmdSetSampleMaskEXT             (commandBuffer, VK_SAMPLE_COUNT_1_BIT, &s_DefaultSampleMask);
-    vkCmdSetFrontFaceEXT              (commandBuffer, VK_FRONT_FACE_CLOCKWISE);
+    vkCmdSetFrontFaceEXT              (commandBuffer, VK_FRONT_FACE_COUNTER_CLOCKWISE);
     vkCmdSetPolygonModeEXT            (commandBuffer, VK_POLYGON_MODE_FILL);
     vkCmdSetCullModeEXT               (commandBuffer, VK_CULL_MODE_BACK_BIT);
     vkCmdSetPrimitiveTopologyEXT      (commandBuffer, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
@@ -282,9 +282,18 @@ bool GetVulkanQueueIndices(const VkInstance& vkInstance, const VkPhysicalDevice&
 void GetVertexInputLayout(std::vector<VkVertexInputBindingDescription2EXT>& bindings, std::vector<VkVertexInputAttributeDescription2EXT>& attributes)
 {
     VkVertexInputBindingDescription2EXT binding = { VK_STRUCTURE_TYPE_VERTEX_INPUT_BINDING_DESCRIPTION_2_EXT };
+
     {
         binding.binding   = 0u;
-        binding.stride    = sizeof(GfVec3f); // sizeof(Vertex);
+        binding.stride    = sizeof(GfVec3f);
+        binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+        binding.divisor   = 1u;
+    }
+    bindings.push_back( binding );
+
+    {
+        binding.binding   = 1u;
+        binding.stride    = sizeof(GfVec3f);
         binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
         binding.divisor   = 1u;
     }
@@ -301,14 +310,14 @@ void GetVertexInputLayout(std::vector<VkVertexInputBindingDescription2EXT>& bind
     }
     attributes.push_back( attribute );
 
-    // // Normal
-    // {
-    //     attribute.binding  = 0u;
-    //     attribute.location = 1u;
-    //     attribute.offset   = offsetof(Vertex, normalOS);
-    //     attribute.format   = VK_FORMAT_R32G32B32_SFLOAT;
-    // }
-    // attributes.push_back( attribute );
+    // Normal
+    {
+        attribute.binding  = 1u;
+        attribute.location = 1u;
+        attribute.offset   = 0u; // offsetof(Vertex, normalOS);
+        attribute.format   = VK_FORMAT_R32G32B32_SFLOAT;
+    }
+    attributes.push_back( attribute );
 
     // // Texcoord
     // {

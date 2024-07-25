@@ -4,6 +4,7 @@
 #include <ResourceRegistry.h>
 #include <Scene.h>
 #include <Mesh.h>
+#include <Camera.h>
 
 // Render Pass Implementation
 // ------------------------------------------------------------
@@ -100,11 +101,7 @@ RenderPass::RenderPass(HdRenderIndex* pRenderIndex, HdRprimCollection const &col
     // Configure Push Constants
     // ------------------------------------------------
 
-    {
-        m_PushConstants._MatrixM  = glm::identity<glm::mat4>();
-        m_PushConstants._MatrixVP = glm::perspectiveFov(glm::radians(80.0f), 1920.0f, 1080.0f, 0.01f, 1000.0f) * glm::lookAt(glm::vec3(1.0, 0, 1.0), glm::vec3(0, 0, 0), glm::vec3(0, -1, 0));
-        m_PushConstants._Time     = 1.0;
-    }
+    m_PushConstants = {};
 }
 
 RenderPass::~RenderPass()
@@ -182,7 +179,7 @@ void RenderPass::_Execute(HdRenderPassStateSharedPtr const& renderPassState, TfT
     {
         colorAttachmentInfo.loadOp      = VK_ATTACHMENT_LOAD_OP_CLEAR;
         colorAttachmentInfo.storeOp     = VK_ATTACHMENT_STORE_OP_STORE;
-        colorAttachmentInfo.clearValue  = {{{ 0.25, 0.5, 1.0, 1.0 }}};
+        colorAttachmentInfo.clearValue  = {{{ 0.0, 0.0, 0.0, 1.0 }}};
         colorAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
         colorAttachmentInfo.imageView   = m_ColorAttachment.imageView;
     } 
@@ -243,25 +240,33 @@ void RenderPass::_Execute(HdRenderPassStateSharedPtr const& renderPassState, TfT
 
     SetDefaultRenderState(pFrame->cmd);
 
-    vkCmdPushConstants(pFrame->cmd, m_PipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0u, sizeof(PushConstants), &m_PushConstants);
-
     vkCmdSetVertexInputEXT(pFrame->cmd, (uint32_t)m_VertexInputBindings.size(), m_VertexInputBindings.data(), (uint32_t)m_VertexInputAttributes.size(), m_VertexInputAttributes.data());
 
     auto pScene     = pRenderContext->GetScene();
     auto pResources = std::static_pointer_cast<ResourceRegistry>(m_Owner->GetResourceRegistry());
 
+    // Set the main camera.
+    Check(pScene->GetCameraList().size() > 0, "There is no camera found in the scene.");
+    m_PushConstants._MatrixVP = pScene->GetCameraList()[0]->GetViewProjectionMatrix(); 
+
     for (const auto& pMesh : pScene->GetMeshList())
     {
-        std::pair<VkBuffer, VmaAllocation> vertexBuffer, indexBuffer;
-        pResources->GetMeshResources(pMesh->GetResourceHandle(), vertexBuffer, indexBuffer); 
+        std::pair<VkBuffer, VmaAllocation> positionBuffer, normalBuffer, indexBuffer;
+        pResources->GetMeshResources(pMesh->GetResourceHandle(), positionBuffer, normalBuffer, indexBuffer); 
 
         VmaAllocationInfo allocationInfo;
         vmaGetAllocationInfo(pRenderContext->GetAllocator(), indexBuffer.second, &allocationInfo);
 
         vkCmdBindIndexBuffer(pFrame->cmd, indexBuffer.first, 0u, VK_INDEX_TYPE_UINT32);
 
-        VkDeviceSize vertexBufferOffset = 0u;
-        vkCmdBindVertexBuffers(pFrame->cmd, 0u, 1u, &vertexBuffer.first, &vertexBufferOffset);
+        VkDeviceSize vertexBufferOffset[2] = { 0u, 0u };
+
+        VkBuffer vertexBuffers[2] = { positionBuffer.first, normalBuffer.first };
+        vkCmdBindVertexBuffers(pFrame->cmd, 0u, 2u, vertexBuffers, vertexBufferOffset);
+
+        m_PushConstants._Color   = pMesh->GetDebugColor();
+        m_PushConstants._MatrixM = pMesh->GetLocalToWorld();
+        vkCmdPushConstants(pFrame->cmd, m_PipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0u, sizeof(PushConstants), &m_PushConstants);
         
         vkCmdDrawIndexed(pFrame->cmd, (uint32_t)allocationInfo.size / sizeof(uint32_t), 1u, 0u, 0u, 0u);
     }

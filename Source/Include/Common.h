@@ -17,9 +17,10 @@
 
 struct PushConstants
 {
-    glm::mat4 _MatrixVP;
-    glm::mat4 _MatrixM;
+    GfMatrix4f _MatrixVP; // glm::mat4 _MatrixVP;
+    GfMatrix4f _MatrixM; // glm::mat4 _MatrixM;
     float     _Time;
+    glm::vec3 _Color;
 };
 
 // Layout of the standard Vertex for this application.

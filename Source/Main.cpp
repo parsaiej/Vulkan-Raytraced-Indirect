@@ -51,6 +51,7 @@ int main()
     // Load a USD Stage.
     // ---------------------
 
+    // auto pUsdStage = pxr::UsdStage::Open("..\\Assets\\dragon_bunny\\dragon_bunny.usd");
     auto pUsdStage = pxr::UsdStage::Open("..\\Assets\\dragon\\dragon.usd");
     TF_VERIFY(pUsdStage != nullptr);
 

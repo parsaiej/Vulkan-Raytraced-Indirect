@@ -54,6 +54,7 @@ add_executable(${PROJECT_NAME}
     Source/ResourceRegistry.cpp
     Source/Mesh.cpp
     Source/Common.cpp
+    Source/Camera.cpp
 )
 
 target_precompile_headers(${PROJECT_NAME} PRIVATE Source/Include/Precompiled.h)

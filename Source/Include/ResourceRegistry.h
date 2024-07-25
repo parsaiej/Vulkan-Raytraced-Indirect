@@ -16,13 +16,14 @@ public:
     {
         SdfPath      id;
         VtVec3fArray pPoints;
+        VtVec3fArray pNormals;
         VtVec3iArray pIndices;
     };
 
     // Queues a GPU-upload request for vertex and index mesh buffers. 
     inline uint64_t PushMeshRequest(MeshRequest meshRequest) { m_PendingMeshRequests.push({ m_ResourceCounter, meshRequest} ); return m_ResourceCounter++; }
 
-    bool GetMeshResources(uint64_t resourceHandle, Buffer& vertexBuffer, Buffer& indexBuffer);
+    bool GetMeshResources(uint64_t resourceHandle, Buffer& positionBuffer, Buffer& normalBuffer, Buffer& indexBuffer);
 
     ResourceRegistry(RenderContext* pRenderContext) : m_RenderContext(pRenderContext), m_ResourceCounter(0u) {}
 
@@ -34,7 +35,8 @@ private:
     RenderContext* m_RenderContext;
 
     // Resources. 
-    std::map<uint64_t, Buffer> m_VertexBuffers;
+    std::map<uint64_t, Buffer> m_PositionBuffers;
+    std::map<uint64_t, Buffer> m_NormalBuffers;
     std::map<uint64_t, Buffer> m_IndexBuffers;
 
     // Queue of resource creation requests that are made during the sync phase.
