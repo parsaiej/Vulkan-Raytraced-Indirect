@@ -3,20 +3,6 @@
 #include <RenderDelegate.h>
 #include <Common.h>
 
-bool ParseStage(const char* filePath, tinyusdz::Stage& stage)
-{
-    std::string wrn, err;
-    bool parseResult = tinyusdz::LoadUSDFromFile(filePath, &stage, &wrn, &err);
-
-    if (!wrn.empty())
-        spdlog::warn("USD Parse Warning: {}", wrn);
-
-    if (!err.empty())
-        spdlog::error("USD Parse Error: {}", err);
-
-    return parseResult;
-}
-
 // Executable implementation.
 // ---------------------------------------------------------
 
@@ -39,45 +25,86 @@ int main()
 
     std::unique_ptr<RenderContext> pRenderContext = std::make_unique<RenderContext>(kWindowWidth, kWindowHeight);
 
-    // Load USD Stage
-    // ------------------------------------------------
+    // Create render delegate.
+    // ---------------------
+
+    auto pRenderDelegate = std::make_unique<RenderDelegate>();
+    TF_VERIFY(pRenderDelegate != nullptr);
+
+    // Wrap the RenderContext into a USD Hydra Driver. 
+    // -------------------------------------- 
+
+    HdDriver renderContextHydraDriver(kTokenRenderContextDriver, VtValue(pRenderContext.get()));
     
-    tinyusdz::Stage stage;
-    Check(ParseStage("..\\Assets\\scene.usd", stage), "Failed to parse the provided USD scene.");
+    // Create render index from the delegate. 
+    // ---------------------
 
-    // Convert the stage into render-friendly primitives
-    // ------------------------------------------------
-    
-    tinyusdz::tydra::RenderScene             renderScene;
-    tinyusdz::tydra::RenderSceneConverter    renderSceneConverter;
-    tinyusdz::tydra::RenderSceneConverterEnv renderSceneConverterEnv(stage);
+    auto pRenderIndex = HdRenderIndex::New(pRenderDelegate.get(), { &renderContextHydraDriver });
+    TF_VERIFY(pRenderIndex != nullptr);
 
-    // Configure render scene before loading.
-    renderSceneConverterEnv.set_search_paths( { "C:\\Development\\Vulkan-RayTraced-Indirect\\Assets\\" } );
-    renderSceneConverterEnv.timecode = 0.0;
+    // Construct a scene delegate from the stock OpenUSD scene delegate implementation.
+    // ---------------------
 
-    if (!renderSceneConverter.ConvertToRenderScene(renderSceneConverterEnv, &renderScene))
+    auto pSceneDelegate = new UsdImagingDelegate(pRenderIndex, SdfPath::AbsoluteRootPath());
+    TF_VERIFY(pSceneDelegate != nullptr);
+
+    // Load a USD Stage.
+    // ---------------------
+
+    // auto pUsdStage = pxr::UsdStage::Open("..\\Assets\\dragon_bunny\\dragon_bunny.usd");
+    auto pUsdStage = pxr::UsdStage::Open("..\\Assets\\dragon\\dragon.usd");
+    TF_VERIFY(pUsdStage != nullptr);
+
+    // Pipe the USD stage into the scene delegate (will create render primitives in the render delegate).
+    // ---------------------
+
+    pSceneDelegate->Populate(pUsdStage->GetPseudoRoot());
+
+    // Create the render tasks.
+    // ---------------------
+
+    HdxTaskController taskController(pRenderIndex, SdfPath("/taskController"));
     {
-        spdlog::error("Render Scene Create Error: {}", renderSceneConverter.GetError());
-        return 1;
+        auto params = HdxRenderTaskParams();
+        {
+            params.viewport = GfVec4i(0, 0, kWindowWidth, kWindowHeight);
+        }
+
+        // The "Task Controller" will automatically configure an HdxRenderTask
+        // (which will create and invoke our delegate's renderpass).
+        taskController.SetRenderParams(params);
+        taskController.SetRenderViewport({ 0, 0, kWindowWidth, kWindowHeight });
     }
-    else if (!renderSceneConverter.GetWarning().empty())
-        spdlog::warn("Render Scene Create Warning: {}", renderSceneConverter.GetWarning());
+
+    // Initialize the Hydra engine. 
+    // ---------------------
+
+    HdEngine engine;
 
     // Command Recording
     // ------------------------------------------------
 
-    renderScene.meshes[0].
+    auto RecordCommands = [&](FrameParams frameParams)
+    {
+        // Forward the current backbuffer and commandbuffer to the delegate. 
+        // There might be a simpler way to manage this by writing my own HdTask, but
+        // it would require sacrificing the simplicity that HdxTaskController offers.
+        pRenderDelegate->SetRenderSetting(kTokenCurrenFrameParams, VtValue(&frameParams));
 
-    // auto RecordCommands = [&](FrameParams frameParams)
-    // {
-    //     spdlog::info("Recording commands..."); 
-    // };
+        // Invoke Hydra!
+        auto renderTasks = taskController.GetRenderingTasks();
+        engine.Execute(pRenderIndex, &renderTasks);
+    };
     
     // Kick off render-loop.
     // ------------------------------------------------
 
-    // pRenderContext->Dispatch(RecordCommands);
+    pRenderContext->Dispatch(RecordCommands);
+
+    // Progarm is exiting, free GPU memory.
+    // ------------------------------------------------
+
+    pRenderDelegate->GetResourceRegistry()->GarbageCollect();
 
     // Destroy LivePP Agent.
     // ------------------------------------------------
