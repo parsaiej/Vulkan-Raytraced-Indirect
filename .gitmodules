@@ -1,3 +1,6 @@
 [submodule "External/vcpkg"]
 	path = External/vcpkg
 	url = git@github.com:microsoft/vcpkg.git
+[submodule "External/tinyusdz"]
+	path = External/tinyusdz
+	url = git@github.com:lighttransport/tinyusdz.git

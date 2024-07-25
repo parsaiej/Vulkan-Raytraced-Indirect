@@ -37,6 +37,22 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/string_cast.hpp>
 
+// Tiny USD Includes
+// ---------------------------------------------------------
+
+#include <str-util.hh>
+#include <pprinter.hh>
+#include <prim-pprint.hh>
+#include <tinyusdz.hh>
+#include <tydra/render-data.hh>
+#include <tydra/scene-access.hh>
+#include <tydra/shader-network.hh>
+#include <tydra/obj-export.hh>
+#include <tydra/usd-export.hh>
+#include <usdShade.hh>
+#include <value-pprint.hh>
+#include <value-types.hh>
+
 // OpenUSD Includes
 // ---------------------------------------------------------
 

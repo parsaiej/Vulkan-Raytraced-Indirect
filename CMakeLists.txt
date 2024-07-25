@@ -30,6 +30,11 @@ elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
     endif()
 endif()
 
+# Configure tinyusd (not on vcpkg yet)
+# --------------------------------
+
+add_subdirectory(External/tinyusdz)
+
 # Packages
 # --------------------------------
 
@@ -66,6 +71,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     Source/Include
     ${Stb_INCLUDE_DIR}
     ${PXR_INCLUDE_DIR}
+    ${CMAKE_SOURCE_DIR}/External/tinyusdz/src
 )
 
 # Link
@@ -78,6 +84,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     GPUOpen::VulkanMemoryAllocator
     tinyobjloader::tinyobjloader
     glm::glm-header-only
+    tinyusdz::tinyusdz_static
     ${PXR_LIBRARIES}
 )
 
