@@ -44,6 +44,7 @@
 #include <pxr/base/tf/errorMark.h>
 #include <pxr/base/gf/matrix4f.h>
 #include <pxr/base/tf/staticTokens.h>
+#include <pxr/base/gf/camera.h>
 
 // Hydra Core
 #include <pxr/imaging/hd/engine.h>
@@ -61,6 +62,7 @@
 // HDX (Hydra Utilities)
 #include <pxr/imaging/hdx/renderTask.h>
 #include <pxr/imaging/hdx/taskController.h>
+#include <pxr/imaging/hdx/freeCameraSceneDelegate.h>
 
 // USD Hydra Scene Delegate Implementation.
 #include <pxr/usdImaging/usdImaging/delegate.h>

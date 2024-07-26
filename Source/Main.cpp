@@ -45,14 +45,14 @@ int main()
     // Construct a scene delegate from the stock OpenUSD scene delegate implementation.
     // ---------------------
 
-    auto pSceneDelegate = new UsdImagingDelegate(pRenderIndex, SdfPath::AbsoluteRootPath());
+    auto pSceneDelegate = std::make_unique<UsdImagingDelegate>(pRenderIndex, SdfPath::AbsoluteRootPath());
     TF_VERIFY(pSceneDelegate != nullptr);
 
     // Load a USD Stage.
     // ---------------------
 
     // auto pUsdStage = pxr::UsdStage::Open("..\\Assets\\dragon_bunny\\dragon_bunny.usd");
-    auto pUsdStage = pxr::UsdStage::Open("..\\Assets\\dragon\\dragon.usd");
+    auto pUsdStage = pxr::UsdStage::Open("..\\Assets\\scene.usd");
     TF_VERIFY(pUsdStage != nullptr);
 
     // Pipe the USD stage into the scene delegate (will create render primitives in the render delegate).
@@ -60,20 +60,20 @@ int main()
 
     pSceneDelegate->Populate(pUsdStage->GetPseudoRoot());
 
+    // Create a free camera.
+    // ---------------------
+
+    auto pFreeCameraSceneDelegate = std::make_unique<HdxFreeCameraSceneDelegate>(pRenderIndex, SdfPath("/freeCamera"));
+
     // Create the render tasks.
     // ---------------------
 
     HdxTaskController taskController(pRenderIndex, SdfPath("/taskController"));
     {
-        auto params = HdxRenderTaskParams();
-        {
-            params.viewport = GfVec4i(0, 0, kWindowWidth, kWindowHeight);
-        }
-
         // The "Task Controller" will automatically configure an HdxRenderTask
         // (which will create and invoke our delegate's renderpass).
-        taskController.SetRenderParams(params);
         taskController.SetRenderViewport({ 0, 0, kWindowWidth, kWindowHeight });
+        taskController.SetCameraPath(pFreeCameraSceneDelegate->GetCameraId());
     }
 
     // Initialize the Hydra engine. 
@@ -84,6 +84,8 @@ int main()
     // Command Recording
     // ------------------------------------------------
 
+    float time = 0.0f;
+
     auto RecordCommands = [&](FrameParams frameParams)
     {
         // Forward the current backbuffer and commandbuffer to the delegate. 
@@ -91,9 +93,31 @@ int main()
         // it would require sacrificing the simplicity that HdxTaskController offers.
         pRenderDelegate->SetRenderSetting(kTokenCurrenFrameParams, VtValue(&frameParams));
 
-        // Invoke Hydra!
+        auto WrapMatrix = [](glm::mat4 m)
+        {
+            return GfMatrix4f(m[0][0], m[0][1], m[0][2], m[0][3],
+                              m[1][0], m[1][1], m[1][2], m[1][3],
+                              m[2][0], m[2][1], m[2][2], m[2][3],
+                              m[3][0], m[3][1], m[3][2], m[3][3]);
+        };
+
+        // Define the camera position (eye), target position (center), and up vector
+        glm::vec3 eye    = glm::vec3(2.0f * sin(time), 0.5f, 2.0f * cos(time));
+        glm::vec3 center = glm::vec3(0.0f, 0.0f, 0.0f);
+        glm::vec3 up     = glm::vec3(0.0f, -1.0f, 0.0f);
+
+        // Create the view matrix using glm::lookAt
+        glm::mat4 view = glm::lookAt(eye, center, up);
+        glm::mat4 proj = glm::perspective(45.0f, 16.0f / 9.0f, 0.1f, 100.0f);
+
+        // Manually use GLM since USD's matrix utilities are very bad. GfMatrix4f::LookAt seems super broken. 
+        pFreeCameraSceneDelegate->SetMatrices((GfMatrix4d)WrapMatrix(view), (GfMatrix4d)WrapMatrix(proj));
+
+        // Invoke Hydra
         auto renderTasks = taskController.GetRenderingTasks();
         engine.Execute(pRenderIndex, &renderTasks);
+
+        time += (float)frameParams.deltaTime;
     };
     
     // Kick off render-loop.

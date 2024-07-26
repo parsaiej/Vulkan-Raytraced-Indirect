@@ -244,10 +244,9 @@ void RenderPass::_Execute(HdRenderPassStateSharedPtr const& renderPassState, TfT
 
     auto pScene     = pRenderContext->GetScene();
     auto pResources = std::static_pointer_cast<ResourceRegistry>(m_Owner->GetResourceRegistry());
-
-    // Set the main camera.
-    Check(pScene->GetCameraList().size() > 0, "There is no camera found in the scene.");
-    m_PushConstants._MatrixVP = pScene->GetCameraList()[0]->GetViewProjectionMatrix(); 
+    
+    // Update camera matrices. 
+    m_PushConstants._MatrixVP = (GfMatrix4f)renderPassState->GetWorldToViewMatrix() * (GfMatrix4f)renderPassState->GetProjectionMatrix();
 
     for (const auto& pMesh : pScene->GetMeshList())
     {
@@ -264,7 +263,6 @@ void RenderPass::_Execute(HdRenderPassStateSharedPtr const& renderPassState, TfT
         VkBuffer vertexBuffers[2] = { positionBuffer.first, normalBuffer.first };
         vkCmdBindVertexBuffers(pFrame->cmd, 0u, 2u, vertexBuffers, vertexBufferOffset);
 
-        m_PushConstants._Color   = pMesh->GetDebugColor();
         m_PushConstants._MatrixM = pMesh->GetLocalToWorld();
         vkCmdPushConstants(pFrame->cmd, m_PipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0u, sizeof(PushConstants), &m_PushConstants);
         

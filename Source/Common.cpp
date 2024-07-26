@@ -249,7 +249,7 @@ void SetDefaultRenderState(VkCommandBuffer commandBuffer)
     vkCmdSetSampleMaskEXT             (commandBuffer, VK_SAMPLE_COUNT_1_BIT, &s_DefaultSampleMask);
     vkCmdSetFrontFaceEXT              (commandBuffer, VK_FRONT_FACE_COUNTER_CLOCKWISE);
     vkCmdSetPolygonModeEXT            (commandBuffer, VK_POLYGON_MODE_FILL);
-    vkCmdSetCullModeEXT               (commandBuffer, VK_CULL_MODE_BACK_BIT);
+    vkCmdSetCullModeEXT               (commandBuffer, VK_CULL_MODE_NONE);
     vkCmdSetPrimitiveTopologyEXT      (commandBuffer, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
 }
 

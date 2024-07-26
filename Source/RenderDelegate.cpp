@@ -47,7 +47,7 @@ HdSprim* RenderDelegate::CreateSprim(TfToken const& typeId, SdfPath const& sprim
         return nullptr;
     }
 
-    return new Camera(sprimId, this);
+    return new HdCamera(sprimId);
 }
 
 void RenderDelegate::CommitResources(HdChangeTracker* pChangeTracker)
