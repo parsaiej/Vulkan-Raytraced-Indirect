@@ -4,7 +4,6 @@
 #include <ResourceRegistry.h>
 #include <Scene.h>
 #include <Mesh.h>
-#include <Camera.h>
 
 // Render Pass Implementation
 // ------------------------------------------------------------

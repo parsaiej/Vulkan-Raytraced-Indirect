@@ -224,7 +224,7 @@ void SetDefaultRenderState(VkCommandBuffer commandBuffer)
     };
 
     static VkBool32     s_DefaultBlendEnable = VK_FALSE;
-    static VkViewport   s_DefaultViewport    = { 0, 0, kWindowWidth, kWindowHeight, 0.0, 1.0 };
+    static VkViewport   s_DefaultViewport    = { 0, kWindowHeight, kWindowWidth, -(int32_t)kWindowHeight, 0.0, 1.0 };
     static VkRect2D     s_DefaultScissor     = { {0, 0}, {kWindowWidth, kWindowHeight} };
     static VkSampleMask s_DefaultSampleMask  = 0xFFFFFFFF;
 

@@ -3,6 +3,12 @@
 #include <RenderDelegate.h>
 #include <Common.h>
 
+// #define USE_FREE_CAMERA
+
+// Hydra 2.0 replaced Scene Delegates with Scene Index concept:
+// https://openusd.org/release/api/_page__hydra__getting__started__guide.html
+// #define USE_HYDRA_SCENE_INDEX
+
 // Executable implementation.
 // ---------------------------------------------------------
 
@@ -42,23 +48,31 @@ int main()
     auto pRenderIndex = HdRenderIndex::New(pRenderDelegate.get(), { &renderContextHydraDriver });
     TF_VERIFY(pRenderIndex != nullptr);
 
-    // Construct a scene delegate from the stock OpenUSD scene delegate implementation.
-    // ---------------------
-
-    auto pSceneDelegate = std::make_unique<UsdImagingDelegate>(pRenderIndex, SdfPath::AbsoluteRootPath());
-    TF_VERIFY(pSceneDelegate != nullptr);
-
     // Load a USD Stage.
     // ---------------------
 
-    // auto pUsdStage = pxr::UsdStage::Open("..\\Assets\\dragon_bunny\\dragon_bunny.usd");
     auto pUsdStage = pxr::UsdStage::Open("..\\Assets\\scene.usd");
     TF_VERIFY(pUsdStage != nullptr);
 
+#ifndef USE_HYDRA_SCENE_INDEX
+    // Construct a scene delegate from the stock OpenUSD scene delegate implementation.
+    // ---------------------
+    auto pSceneDelegate = std::make_unique<UsdImagingDelegate>(pRenderIndex, SdfPath::AbsoluteRootPath());
+    TF_VERIFY(pSceneDelegate != nullptr);
+
     // Pipe the USD stage into the scene delegate (will create render primitives in the render delegate).
     // ---------------------
-
     pSceneDelegate->Populate(pUsdStage->GetPseudoRoot());
+#else
+    // Construct a scene index from the stock OpenUSD scene index implementation.
+    // ---------------------
+    auto pSceneIndex = UsdImagingStageSceneIndex::New(nullptr);
+
+    pSceneIndex->SetStage(pUsdStage);
+
+    // Insert the scene index into the render index.
+    pRenderIndex->InsertSceneIndex(pSceneIndex, SdfPath(), false);
+#endif
 
     // Create a free camera.
     // ---------------------
@@ -73,7 +87,12 @@ int main()
         // The "Task Controller" will automatically configure an HdxRenderTask
         // (which will create and invoke our delegate's renderpass).
         taskController.SetRenderViewport({ 0, 0, kWindowWidth, kWindowHeight });
+
+    #ifdef USE_FREE_CAMERA
         taskController.SetCameraPath(pFreeCameraSceneDelegate->GetCameraId());
+    #else
+        taskController.SetCameraPath(SdfPath("/cameras/camera1"));
+    #endif
     }
 
     // Initialize the Hydra engine. 
@@ -93,6 +112,7 @@ int main()
         // it would require sacrificing the simplicity that HdxTaskController offers.
         pRenderDelegate->SetRenderSetting(kTokenCurrenFrameParams, VtValue(&frameParams));
 
+#ifdef USE_FREE_CAMERA
         auto WrapMatrix = [](glm::mat4 m)
         {
             return GfMatrix4f(m[0][0], m[0][1], m[0][2], m[0][3],
@@ -102,9 +122,9 @@ int main()
         };
 
         // Define the camera position (eye), target position (center), and up vector
-        glm::vec3 eye    = glm::vec3(2.0f * sin(time), 0.5f, 2.0f * cos(time));
+        glm::vec3 eye    = glm::vec3(0.5f * sin(time), 0.5f, 0.5f * cos(time));
         glm::vec3 center = glm::vec3(0.0f, 0.0f, 0.0f);
-        glm::vec3 up     = glm::vec3(0.0f, -1.0f, 0.0f);
+        glm::vec3 up     = glm::vec3(0.0f, 1.0f, 0.0f);
 
         // Create the view matrix using glm::lookAt
         glm::mat4 view = glm::lookAt(eye, center, up);
@@ -112,6 +132,7 @@ int main()
 
         // Manually use GLM since USD's matrix utilities are very bad. GfMatrix4f::LookAt seems super broken. 
         pFreeCameraSceneDelegate->SetMatrices((GfMatrix4d)WrapMatrix(view), (GfMatrix4d)WrapMatrix(proj));
+#endif
 
         // Invoke Hydra
         auto renderTasks = taskController.GetRenderingTasks();

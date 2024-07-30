@@ -4,8 +4,8 @@
 #include <ResourceRegistry.h>
 #include <Scene.h>
 #include <Mesh.h>
+#include <Material.h>
 #include <Common.h>
-#include <Camera.h>
 
 // Render Delegate Implementation
 // ------------------------------------------------------------
@@ -41,13 +41,13 @@ HdRprim* RenderDelegate::CreateRprim(TfToken const& typeId, SdfPath const& rprim
 
 HdSprim* RenderDelegate::CreateSprim(TfToken const& typeId, SdfPath const& sprimId)
 {
-    if (typeId != HdPrimTypeTokens->camera)
-    {
-        spdlog::warn("Skipping non-camera Hydra Sprim.");
-        return nullptr;
-    }
+    if (typeId == HdPrimTypeTokens->camera)
+        return new HdCamera(sprimId);
 
-    return new HdCamera(sprimId);
+    if (typeId == HdPrimTypeTokens->material)
+        return new Material(sprimId);
+
+    return nullptr;
 }
 
 void RenderDelegate::CommitResources(HdChangeTracker* pChangeTracker)

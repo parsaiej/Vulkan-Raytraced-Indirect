@@ -87,10 +87,6 @@ void ProcessMeshRequest(RenderContext* pRenderContext, ResourceRegistry::MeshReq
         return meshBuffer;
     };
 
-    spdlog::info("Index Count: {}", meshRequest.pIndices.size());
-    spdlog::info("Pos   Count: {}", meshRequest.pPoints.size());
-    spdlog::info("Norm  Count: {}", meshRequest.pNormals.size());
-
     indexBuffer    = CreateMeshBuffer(meshRequest.pIndices.data(), sizeof(GfVec3i) * (uint32_t)meshRequest.pIndices.size(), VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
     positionBuffer = CreateMeshBuffer(meshRequest.pPoints.data(),  sizeof(GfVec3f) * (uint32_t)meshRequest.pPoints.size(),  VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
     normalBuffer   = CreateMeshBuffer(meshRequest.pNormals.data(), sizeof(GfVec3f) * (uint32_t)meshRequest.pNormals.size(), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);

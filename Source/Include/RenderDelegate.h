@@ -15,6 +15,7 @@ const TfTokenVector kSupportedRPrimTypes =
 const TfTokenVector kSupportedSPrimTypes =
 {
     HdPrimTypeTokens->camera,
+    HdPrimTypeTokens->material
 };
 
 const TfTokenVector kSupportedBPrimTypes =
@@ -55,6 +56,8 @@ public:
     void DestroyRprim(HdRprim* rPrim) override { };
     void DestroySprim(HdSprim* sprim) override { };
     void DestroyBprim(HdBprim* bprim) override { };
+
+    TfTokenVector GetMaterialRenderContexts() const override { return { TfToken("mtlx") }; }
 
     void CommitResources(HdChangeTracker* pTracker) override;
 

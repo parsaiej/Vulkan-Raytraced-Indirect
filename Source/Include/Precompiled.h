@@ -58,6 +58,10 @@
 #include <pxr/imaging/hd/task.h>
 #include <pxr/imaging/hd/mesh.h>
 #include <pxr/imaging/hd/meshUtil.h>
+#include <pxr/imaging/hd/material.h>
+
+// MaterialX Support.
+#include <pxr/imaging/hdMtlx/hdMtlx.h>
 
 // HDX (Hydra Utilities)
 #include <pxr/imaging/hdx/renderTask.h>
@@ -66,6 +70,7 @@
 
 // USD Hydra Scene Delegate Implementation.
 #include <pxr/usdImaging/usdImaging/delegate.h>
+#include <pxr/usdImaging/usdImaging/stageSceneIndex.h>
 
 PXR_NAMESPACE_USING_DIRECTIVE
 

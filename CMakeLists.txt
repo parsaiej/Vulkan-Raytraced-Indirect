@@ -40,6 +40,7 @@ find_package(glfw3                 REQUIRED)
 find_package(VulkanMemoryAllocator REQUIRED)
 find_package(tinyobjloader         REQUIRED)
 find_package(glm                   REQUIRED)
+find_package(OpenGL                REQUIRED)
 find_package(pxr                   REQUIRED)
 
 # Executable
@@ -54,7 +55,7 @@ add_executable(${PROJECT_NAME}
     Source/ResourceRegistry.cpp
     Source/Mesh.cpp
     Source/Common.cpp
-    Source/Camera.cpp
+    Source/Material.cpp
 )
 
 target_precompile_headers(${PROJECT_NAME} PRIVATE Source/Include/Precompiled.h)
