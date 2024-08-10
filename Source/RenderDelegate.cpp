@@ -1,11 +1,11 @@
+#include <Common.h>
+#include <Material.h>
+#include <Mesh.h>
+#include <RenderContext.h>
 #include <RenderDelegate.h>
 #include <RenderPass.h>
-#include <RenderContext.h>
 #include <ResourceRegistry.h>
 #include <Scene.h>
-#include <Mesh.h>
-#include <Material.h>
-#include <Common.h>
 
 // Render Delegate Implementation
 // ------------------------------------------------------------
@@ -19,13 +19,14 @@ void RenderDelegate::SetDrivers(HdDriverVector const& drivers)
     }
 
     Check(m_RenderContext, "Failed to find the custom Vulkan driver for Hydra.");
-    
+
     m_ResourceRegistry = std::make_shared<ResourceRegistry>(m_RenderContext);
 }
 
-HdRenderPassSharedPtr RenderDelegate::CreateRenderPass(HdRenderIndex* pRenderIndex, HdRprimCollection const& collection)
+HdRenderPassSharedPtr RenderDelegate::CreateRenderPass(
+    HdRenderIndex* pRenderIndex, HdRprimCollection const& collection)
 {
-    return HdRenderPassSharedPtr(new RenderPass(pRenderIndex, collection, this));  
+    return HdRenderPassSharedPtr(new RenderPass(pRenderIndex, collection, this));
 }
 
 HdRprim* RenderDelegate::CreateRprim(TfToken const& typeId, SdfPath const& rprimId)
@@ -45,13 +46,13 @@ HdSprim* RenderDelegate::CreateSprim(TfToken const& typeId, SdfPath const& sprim
         return new HdCamera(sprimId);
 
     if (typeId == HdPrimTypeTokens->material)
-        return new Material(sprimId);
+        return new Material(sprimId, this);
 
     return nullptr;
 }
 
 void RenderDelegate::CommitResources(HdChangeTracker* pChangeTracker)
 {
-    // Upload resources to GPU. 
+    // Upload resources to GPU.
     m_ResourceRegistry->Commit();
 }

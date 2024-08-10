@@ -7,20 +7,13 @@ class ResourceRegistry;
 // USD Hydra Render Delegate
 // ---------------------------------------------------------
 
-const TfTokenVector kSupportedRPrimTypes =
-{
+const TfTokenVector kSupportedRPrimTypes = {
     HdPrimTypeTokens->mesh,
 };
 
-const TfTokenVector kSupportedSPrimTypes =
-{
-    HdPrimTypeTokens->camera,
-    HdPrimTypeTokens->material
-};
+const TfTokenVector kSupportedSPrimTypes = { HdPrimTypeTokens->camera, HdPrimTypeTokens->material };
 
-const TfTokenVector kSupportedBPrimTypes =
-{
-};
+const TfTokenVector kSupportedBPrimTypes = {};
 
 // This token is used for identifying our custom Hydra driver.
 const TfToken kTokenRenderContextDriver = TfToken("RenderContextDriver");
@@ -41,21 +34,28 @@ public:
 
     HdResourceRegistrySharedPtr GetResourceRegistry() const override { return m_ResourceRegistry; };
 
-    HdRenderPassSharedPtr CreateRenderPass(HdRenderIndex* index, HdRprimCollection const& collection) override;
+    HdRenderPassSharedPtr CreateRenderPass(
+        HdRenderIndex* index, HdRprimCollection const& collection) override;
 
-    HdInstancer* CreateInstancer(HdSceneDelegate *delegate, SdfPath const& id) override { return nullptr; };
-    void DestroyInstancer(HdInstancer *instancer) override {};
+    HdInstancer* CreateInstancer(HdSceneDelegate* delegate, SdfPath const& id) override
+    {
+        return nullptr;
+    };
+    void DestroyInstancer(HdInstancer* instancer) override {};
 
     HdRprim* CreateRprim(TfToken const& typeId, SdfPath const& rprimId) override;
     HdSprim* CreateSprim(TfToken const& typeId, SdfPath const& sprimId) override;
-    HdBprim* CreateBprim(TfToken const& typeId, SdfPath const& bprimId) override { return nullptr; };
-    
+    HdBprim* CreateBprim(TfToken const& typeId, SdfPath const& bprimId) override
+    {
+        return nullptr;
+    };
+
     HdSprim* CreateFallbackSprim(TfToken const& typeId) override { return nullptr; };
     HdBprim* CreateFallbackBprim(TfToken const& typeId) override { return nullptr; };
 
-    void DestroyRprim(HdRprim* rPrim) override { };
-    void DestroySprim(HdSprim* sprim) override { };
-    void DestroyBprim(HdBprim* bprim) override { };
+    void DestroyRprim(HdRprim* rPrim) override {};
+    void DestroySprim(HdSprim* sprim) override {};
+    void DestroyBprim(HdBprim* bprim) override {};
 
     TfTokenVector GetMaterialRenderContexts() const override { return { TfToken("mtlx") }; }
 
@@ -67,10 +67,9 @@ public:
     inline std::mutex& GetRenderContextMutex() { return m_RenderContextMutex; }
 
 private:
-
     // Reference to the custom Vulkan driver implementation.
     RenderContext* m_RenderContext;
-    std::mutex     m_RenderContextMutex;
+    std::mutex m_RenderContextMutex;
 
     HdResourceRegistrySharedPtr m_ResourceRegistry;
 };

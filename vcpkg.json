@@ -1,12 +1,11 @@
 {
-    "dependencies": 
-    [
-        { "name": "spdlog", "features": [ "wchar" ] },
-        "stb",
-        "volk",
-        "glfw3",
-        "vulkan-memory-allocator",
-        "tinyobjloader",
-        "glm"
-    ]
+  "dependencies": [
+    { "name": "spdlog", "features": ["wchar"] },
+    "stb",
+    "volk",
+    "glfw3",
+    "vulkan-memory-allocator",
+    "tinyobjloader",
+    "glm"
+  ]
 }

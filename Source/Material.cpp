@@ -1,62 +1,166 @@
-#include <Material.h>
 #include <Common.h>
+#include <Material.h>
+#include <RenderDelegate.h>
+#include <ResourceRegistry.h>
+
+#include <MaterialXCore/Document.h>
+#include <MaterialXFormat/XmlIo.h>
+#include <MaterialXGenShader/Util.h>
+
+#include <MaterialXGenGlsl/VkResourceBindingContext.h>
+#include <MaterialXGenGlsl/VkShaderGenerator.h>
+#include <MaterialXGenShader/Shader.h>
+
+// #define MATERIAL_DEBUG_PRINT_NETWOR
+// #define MATERIAL_DEBUG_MATERIALX
 
 HdDirtyBits Material::GetInitialDirtyBitsMask() const
 {
     return HdChangeTracker::AllSceneDirtyBits;
 }
 
-void Material::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParam, HdDirtyBits* pDirtyBits)
+void TraceNodeRecursive(
+    HdMaterialNetwork2* pNetwork, HdMaterialNode2* pNode, uint32_t traceDepth = 0u)
+{
+    spdlog::info("{}NODE: {}", std::string(traceDepth, '\t'), pNode->nodeTypeId.GetText());
+
+    for (const auto& input : pNode->inputConnections)
+    {
+        spdlog::info("{}INPUT: {}", std::string(traceDepth + 1u, '\t'), input.first.GetText());
+
+        assert(input.second.size() <= 1);
+
+        for (const auto& connection : input.second)
+        {
+            auto node = pNetwork->nodes.find(connection.upstreamNode);
+
+            // Follow the connection to the next node.
+            TraceNodeRecursive(pNetwork, &node->second, traceDepth + 1u);
+        }
+    }
+
+    for (const auto& parameter : pNode->parameters)
+    {
+        if (parameter.second.IsHolding<SdfAssetPath>())
+            spdlog::info("{}ASSET: {}", std::string(traceDepth + 1u, '\t'),
+                parameter.second.Get<SdfAssetPath>().GetResolvedPath());
+    }
+}
+
+template <typename T>
+T TryGetSingleParameterForInput(
+    const char* inputName, HdMaterialNetwork2* pNetwork, HdMaterialNode2* pNode)
+{
+    for (const auto& input : pNode->inputConnections)
+    {
+        if (strcmp(input.first.GetText(), inputName))
+            return T();
+
+        for (const auto& connection : input.second)
+        {
+            auto node = pNetwork->nodes.find(connection.upstreamNode);
+
+            // Follow the connection to the next node.
+            return TryGetSingleParameterForInput<T>(inputName, pNetwork, &node->second);
+        }
+    }
+
+    for (const auto& parameter : pNode->parameters)
+    {
+        if (parameter.second.IsHolding<T>())
+            return parameter.second.Get<T>();
+    }
+
+    return T();
+}
+
+void ReconstructMaterialXDocument(HdMaterialNetwork2* pNetwork, const SdfPath& rootNodePath,
+    const HdMaterialNode2& rootNode, const SdfPath& materialID)
+{
+    // Reconstruct the MaterialX Document from the HdMaterialNetwork
+    HdMtlxTexturePrimvarData mxTextureData;
+    auto pDocument = HdMtlxCreateMtlxDocumentFromHdNetwork(
+        *pNetwork, rootNode, rootNodePath, materialID, HdMtlxStdLibraries(), &mxTextureData);
+
+    // Validate the document.
+    Check(pDocument->validate(), "Failed to validate the MaterialX document.");
+
+#if 0
+    // Write to disk for debug purposes. 
+    MaterialX::writeToXmlFile(pDocument, std::format("{}.mtlx", rootNodePath.GetName()));
+#endif
+
+    // Create shader generator.
+    MaterialX::GenContext generationContext(MaterialX::VkShaderGenerator::create());
+
+    // Hardcode path to the materialx std libraries.
+    // NOTE: Should be able to remove this simply by moving /libraries/ relative
+    // to executable.
+    generationContext.registerSourceCodeSearchPath("C:\\Development\\OpenUSD-Install\\");
+
+    // Find renderable elements in the Mtlx Document.
+    auto renderableElements = MaterialX::findRenderableElements(pDocument);
+
+    // Extract the generated shader.
+    auto pShader = generationContext.getShaderGenerator().generate(
+        "Shader", renderableElements[0], generationContext);
+}
+
+void Material::Sync(
+    HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParam, HdDirtyBits* pDirtyBits)
 {
     if (!(*pDirtyBits & HdChangeTracker::AllSceneDirtyBits))
         return;
 
+    std::lock_guard<std::mutex> renderContextLock(m_Owner->GetRenderContextMutex());
+
     auto id = GetId();
 
     auto materialResource = pSceneDelegate->GetMaterialResource(id);
-    
+
     if (!materialResource.IsHolding<HdMaterialNetworkMap>())
         return;
 
     // Convert to the newer network model.
-    auto network = HdConvertToHdMaterialNetwork2(materialResource.UncheckedGet<HdMaterialNetworkMap>());
+    auto network =
+        HdConvertToHdMaterialNetwork2(materialResource.UncheckedGet<HdMaterialNetworkMap>());
 
-    // Get Standard Libraries and SearchPaths (for mxDoc and mxShaderGen)
-    const MaterialX::DocumentPtr&    mxStandardLibraries = HdMtlxStdLibraries();
-    const MaterialX::FileSearchPath& mxSearchPaths       = HdMtlxSearchPaths();
+    // Get the Surface Terminal
+    auto const& terminalConnectionIterator =
+        network.terminals.find(HdMaterialTerminalTokens->surface);
 
-    std::pair<SdfPath, HdMaterialNode2*> surfaceNode;
+    Check(terminalConnectionIterator != network.terminals.end(),
+        "Failed to locate a surface node on the material.");
+
+    // Grab the terminal connection.
+    auto surfaceTerminalConnection = terminalConnectionIterator->second;
+
+    // Grab the root surface node.
+    auto rootNode = network.nodes.find(surfaceTerminalConnection.upstreamNode);
+
+#ifdef MATERIAL_DEBUG_PRINT_NETWORK
+    // Debug print the surface material graph.
+    TraceNodeRecursive(&network, &rootNode->second);
+#endif
+
+#ifdef MATERIAL_DEBUG_MATERIALX
+    ReconstructMaterialXDocument(&network, rootNode->first, rootNode->second, id);
+#endif
+
+    // Obtain the resource registry + push the material request.
+    auto pResourceRegistry = std::static_pointer_cast<ResourceRegistry>(
+        pSceneDelegate->GetRenderIndex().GetResourceRegistry());
     {
-        // Get the Surface or Volume Terminal
-        auto const& terminalConnectionIterator = network.terminals.find(HdMaterialTerminalTokens->surface);
-
-        Check(terminalConnectionIterator != network.terminals.end(), "Failed to locate a surface node on the material.");
-
-        // Grab the terminal connection.
-        auto surfaceTerminalConnection = terminalConnectionIterator->second;
-
-        // Cache surface node path.
-        surfaceNode.first = surfaceTerminalConnection.upstreamNode;
-
-        auto const& terminalNodeIterator = network.nodes.find(surfaceNode.first);
-        
-        // Found the surface node.
-        surfaceNode.second = &terminalNodeIterator->second;
+        m_ResourceHandle = pResourceRegistry->PushMaterialRequest({ id,
+            TryGetSingleParameterForInput<SdfAssetPath>(
+                kMaterialInputBaseColor, &network, &rootNode->second),
+            TryGetSingleParameterForInput<SdfAssetPath>(
+                kMaterialInputNormal, &network, &rootNode->second),
+            TryGetSingleParameterForInput<SdfAssetPath>(
+                kMaterialInputRoughness, &network, &rootNode->second),
+            TryGetSingleParameterForInput<SdfAssetPath>(
+                kMaterialInputMetallic, &network, &rootNode->second) });
     }
-
-    Check(surfaceNode.second != nullptr, "Failed to locate a surface node on the material.");
-
-    // Create the MaterialX Document from the HdMaterialNetwork
-    HdMtlxTexturePrimvarData mxTextureData;
-    auto pDocument = HdMtlxCreateMtlxDocumentFromHdNetwork
-    (
-        network, 
-        *surfaceNode.second, 
-        surfaceNode.first, 
-        id,
-        mxStandardLibraries, 
-        &mxTextureData
-    );
 
     // Clear the dirty bits.
     *pDirtyBits &= ~HdChangeTracker::AllSceneDirtyBits;
