@@ -1,29 +1,40 @@
 Checks: >
   -*,
   cppcoreguidelines-*,
+    -cppcoreguidelines-avoid-magic-numbers,
+    -cppcoreguidelines-owning-memory,
+    -cppcoreguidelines-special-member-functions,
+    -cppcoreguidelines-pro-type-reinterpret-cast,
   bugprone-*,
     -bugprone-easily-swappable-parameters,
   google-*,
     -google-readability-namespace-comments,
     -google-runtime-int,
     -google-runtime-references,
+    -google-readability-braces-around-statements,
   misc-*,
     -misc-non-private-member-variables-in-classes,
+    -misc-unused-parameters,
+    -misc-no-recursion,
   clang-diagnostics-*,
   modernize-*,
+    -modernize-use-trailing-return-type,
   performance-*,
   portability-*,
   readability-*,
     -readability-named-parameter,
     -readability-magic-numbers,
+    -readability-braces-around-statements,
+    -readability-identifier-length,
+    -readability-use-anyofallof
 
-WarningsAsErrors: ""
+WarningsAsErrors: "*"
 
-# CheckOptions:
-#   - { key: readability-identifier-naming.NamespaceCase,           value: CamelCase  }
-#   - { key: readability-identifier-naming.ClassCase,               value: CamelCase  }
-#   - { key: readability-identifier-naming.StructCase,              value: CamelCase  }
-#   - { key: readability-identifier-naming.TemplateParameterCase,   value: CamelCase  }
-#   - { key: readability-identifier-naming.FunctionCase,            value: lower_case }
-#   - { key: readability-identifier-naming.VariableCase,            value: lower_case }
-#   - { key: readability-identifier-naming.MacroDefinitionCase,     value: UPPER_CASE }
+CheckOptions:
+  - { key: readability-identifier-naming.NamespaceCase,           value: CamelCase  }
+  - { key: readability-identifier-naming.ClassCase,               value: CamelCase  }
+  - { key: readability-identifier-naming.StructCase,              value: CamelCase  }
+  - { key: readability-identifier-naming.TemplateParameterCase,   value: CamelCase  }
+  - { key: readability-identifier-naming.FunctionCase,            value: CamelCase  }
+  - { key: readability-identifier-naming.VariableCase,            value: camelCase  }
+  - { key: readability-identifier-naming.MacroDefinitionCase,     value: UPPER_CASE }

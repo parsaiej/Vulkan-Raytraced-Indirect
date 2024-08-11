@@ -4,9 +4,9 @@
 // Context for OS-Window, Vulkan Initialization, Swapchain Management.
 // ---------------------------------------------------------
 
-const uint32_t kWindowWidth       = 1920u;
-const uint32_t kWindowHeight      = 1080u;
-const uint32_t kMaxFramesInFlight = 3u;
+const uint32_t kWindowWidth       = 1920U; // NOLINT
+const uint32_t kWindowHeight      = 1080U; // NOLINT
+const uint32_t kMaxFramesInFlight = 3U;
 
 struct FrameParams;
 class Scene;
@@ -19,7 +19,7 @@ public:
 
     // Dispatch a render loop into the OS window, invoking a provided command recording callback
     // each frame.
-    void Dispatch(std::function<void(FrameParams)> commandsFunc);
+    void Dispatch(const std::function<void(FrameParams)>& commandsFunc);
 
     inline VkDevice& GetDevice() { return m_VKDeviceLogical; }
     inline VmaAllocator& GetAllocator() { return m_VKMemoryAllocator; }
@@ -30,29 +30,29 @@ public:
     inline Scene* GetScene() { return m_Scene.get(); }
 
 private:
-    VkInstance m_VKInstance;
-    VkPhysicalDevice m_VKDevicePhysical;
-    VkDevice m_VKDeviceLogical;
-    VkDescriptorPool m_VKDescriptorPool;
-    VmaAllocator m_VKMemoryAllocator;
+    VkInstance m_VKInstance             = VK_NULL_HANDLE;
+    VkPhysicalDevice m_VKDevicePhysical = VK_NULL_HANDLE;
+    VkDevice m_VKDeviceLogical          = VK_NULL_HANDLE;
+    VkDescriptorPool m_VKDescriptorPool = VK_NULL_HANDLE;
+    VmaAllocator m_VKMemoryAllocator    = VK_NULL_HANDLE;
     GLFWwindow* m_Window;
 
     // Command Primitives
-    VkCommandPool m_VKCommandPool;
-    VkQueue m_VKCommandQueue;
-    uint32_t m_VKCommandQueueIndex;
+    VkCommandPool m_VKCommandPool  = VK_NULL_HANDLE;
+    VkQueue m_VKCommandQueue       = VK_NULL_HANDLE;
+    uint32_t m_VKCommandQueueIndex = UINT_MAX;
 
     // Swapchain Primitives
-    VkSwapchainKHR m_VKSwapchain;
-    VkSurfaceKHR m_VKSurface;
+    VkSwapchainKHR m_VKSwapchain = VK_NULL_HANDLE;
+    VkSurfaceKHR m_VKSurface     = VK_NULL_HANDLE;
     std::vector<VkImage> m_VKSwapchainImages;
     std::vector<VkImageView> m_VKSwapchainImageViews;
 
     // Frame Primitives
-    VkCommandBuffer m_VKCommandBuffers[kMaxFramesInFlight];
-    VkSemaphore m_VKImageAvailableSemaphores[kMaxFramesInFlight];
-    VkSemaphore m_VKRenderCompleteSemaphores[kMaxFramesInFlight];
-    VkFence m_VKInFlightFences[kMaxFramesInFlight];
+    std::array<VkCommandBuffer, kMaxFramesInFlight> m_VKCommandBuffers {};
+    std::array<VkSemaphore, kMaxFramesInFlight> m_VKImageAvailableSemaphores {};
+    std::array<VkSemaphore, kMaxFramesInFlight> m_VKRenderCompleteSemaphores {};
+    std::array<VkFence, kMaxFramesInFlight> m_VKInFlightFences {};
 
     // Scene (Constructed from Hydra)
     std::unique_ptr<Scene> m_Scene;

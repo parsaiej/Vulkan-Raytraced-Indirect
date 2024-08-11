@@ -5,29 +5,17 @@
 #include <ResourceRegistry.h>
 #include <Scene.h>
 
-#include <random>
-
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/string_cast.hpp>
-
-// Create a random device to seed the random number generator
-std::random_device rd;
-
-// Create a Mersenne Twister random number generator
-std::mt19937 gen(rd());
-
-// Create a uniform real distribution to generate floats between 0 and 1
-std::uniform_real_distribution<> dis(0.0, 1.0);
 
 HdDirtyBits Mesh::GetInitialDirtyBitsMask() const
 {
     return HdChangeTracker::AllSceneDirtyBits;
 }
 
-void Mesh::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParams,
-    HdDirtyBits* pDirtyBits, TfToken const& reprToken)
+void Mesh::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParams, HdDirtyBits* pDirtyBits, TfToken const& reprToken)
 {
-    if (!(*pDirtyBits & HdChangeTracker::AllSceneDirtyBits))
+    if ((*pDirtyBits & HdChangeTracker::AllSceneDirtyBits) == 0U)
         return;
 
     std::lock_guard<std::mutex> renderContextLock(m_Owner->GetRenderContextMutex());
@@ -36,7 +24,7 @@ void Mesh::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParams,
 
     // Set debug color
     {
-        m_DebugColor = { dis(gen), dis(gen), dis(gen) };
+        m_DebugColor = { 1.0F, 0.0F, 0.0F };
     }
 
     auto pPointList  = pSceneDelegate->Get(id, HdTokens->points).Get<VtVec3fArray>();
@@ -53,16 +41,14 @@ void Mesh::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParams,
     meshUtil.ComputeTriangleIndices(&pIndexList, &trianglePrimitiveParams);
 
     // Obtain the resource registry.
-    auto pResourceRegistry = std::static_pointer_cast<ResourceRegistry>(
-        pSceneDelegate->GetRenderIndex().GetResourceRegistry());
+    auto pResourceRegistry = std::static_pointer_cast<ResourceRegistry>(pSceneDelegate->GetRenderIndex().GetResourceRegistry());
     {
-        m_ResourceHandle =
-            pResourceRegistry->PushMeshRequest({ id, pPointList, pNormalList, pIndexList });
+        m_ResourceHandle = pResourceRegistry->PushMeshRequest({ id, pPointList, pNormalList, pIndexList });
     }
 
     // Get the world matrix.
     // m_LocalToWorld = glm::transpose(glm::make_mat4(pSceneDelegate->GetTransform(id).data()));
-    m_LocalToWorld = (GfMatrix4f)pSceneDelegate->GetTransform(id);
+    m_LocalToWorld = GfMatrix4f(pSceneDelegate->GetTransform(id));
 
     m_Owner->GetRenderContext()->GetScene()->AddMesh(this);
 
@@ -77,8 +63,7 @@ HdDirtyBits Mesh::_PropagateDirtyBits(HdDirtyBits bits) const
 
 void Mesh::_InitRepr(TfToken const& reprToken, HdDirtyBits* pDirtyBits)
 {
-    _ReprVector::iterator it =
-        std::find_if(_reprs.begin(), _reprs.end(), _ReprComparator(reprToken));
+    auto it = std::find_if(_reprs.begin(), _reprs.end(), _ReprComparator(reprToken));
 
     if (it == _reprs.end())
         _reprs.emplace_back(reprToken, HdReprSharedPtr());

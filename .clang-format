@@ -17,7 +17,7 @@ BraceWrapping:
   # Enable this when when clang-format version in Visual Studio supports it.
   # BeforeLambdaBody: true
 BreakConstructorInitializers: AfterColon
-ColumnLimit: 100
+ColumnLimit: 200
 CompactNamespaces: true
 ConstructorInitializerAllOnOneLineOrOnePerLine: true
 Cpp11BracedListStyle: false

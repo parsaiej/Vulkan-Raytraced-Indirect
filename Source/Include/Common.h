@@ -6,7 +6,7 @@
 
 #ifdef _DEBUG
 
-inline void Check(VkResult a, const char *b)
+inline void Check(VkResult a, const char* b)
 {
     if (a != VK_SUCCESS)
     {
@@ -15,9 +15,9 @@ inline void Check(VkResult a, const char *b)
         exit(a);
     }
 }
-inline void Check(bool a, const char *b)
+inline void Check(bool a, const char* b)
 {
-    if (a != true)
+    if (!a)
     {
         spdlog::critical(b);
         __debugbreak();
@@ -27,7 +27,7 @@ inline void Check(bool a, const char *b)
 
 #else
 
-inline void Check(VkResult a, const char *b)
+inline void Check(VkResult a, const char* b)
 {
     if (a != VK_SUCCESS)
     {
@@ -36,7 +36,7 @@ inline void Check(VkResult a, const char *b)
     }
 }
 
-inline void Check(bool a, const char *b)
+inline void Check(bool a, const char* b)
 {
     if (a != true)
     {
@@ -52,8 +52,8 @@ inline void Check(bool a, const char *b)
 
 struct PushConstants
 {
-    GfMatrix4f _MatrixM;
-    GfMatrix4f _MatrixVP;
+    GfMatrix4f MatrixM;
+    GfMatrix4f MatrixVP;
 };
 
 // Layout of the standard Vertex for this application.
@@ -92,28 +92,22 @@ struct Image
 
 class RenderContext;
 
-bool CreatePhysicallyBasedMaterialDescriptorLayout(const VkDevice &vkLogicalDevice,
-                                                   VkDescriptorSetLayout &vkDescriptorSetLayout);
+bool CreatePhysicallyBasedMaterialDescriptorLayout(const VkDevice& vkLogicalDevice, VkDescriptorSetLayout& vkDescriptorSetLayout);
 
-bool SelectVulkanPhysicalDevice(const VkInstance &vkInstance, const std::vector<const char *> requiredExtensions,
-                                VkPhysicalDevice &vkPhysicalDevice);
+bool SelectVulkanPhysicalDevice(const VkInstance& vkInstance, const std::vector<const char*>& requiredExtensions, VkPhysicalDevice& vkPhysicalDevice);
 
-bool CreateVulkanLogicalDevice(const VkPhysicalDevice &vkPhysicalDevice,
-                               const std::vector<const char *> &requiredExtensions, uint32_t vkGraphicsQueueIndex,
-                               VkDevice &vkLogicalDevice);
+bool CreateVulkanLogicalDevice(const VkPhysicalDevice& vkPhysicalDevice, const std::vector<const char*>& requiredExtensions, uint32_t vkGraphicsQueueIndex, VkDevice& vkLogicalDevice);
 
-bool LoadByteCode(const char *filePath, std::vector<char> &byteCode);
+bool LoadByteCode(const char* filePath, std::vector<char>& byteCode);
 
 void SetDefaultRenderState(VkCommandBuffer commandBuffer);
 
-bool GetVulkanQueueIndices(const VkInstance &vkInstance, const VkPhysicalDevice &vkPhysicalDevice,
-                           uint32_t &vkQueueIndexGraphics);
+bool GetVulkanQueueIndices(const VkInstance& vkInstance, const VkPhysicalDevice& vkPhysicalDevice, uint32_t& vkQueueIndexGraphics);
 
-void GetVertexInputLayout(std::vector<VkVertexInputBindingDescription2EXT> &bindings,
-                          std::vector<VkVertexInputAttributeDescription2EXT> &attributes);
+void GetVertexInputLayout(std::vector<VkVertexInputBindingDescription2EXT>& bindings, std::vector<VkVertexInputAttributeDescription2EXT>& attributes);
 
-bool CreateRenderingAttachments(RenderContext *pRenderContext, Image &colorAttachment, Image &depthAttachment);
+bool CreateRenderingAttachments(RenderContext* pRenderContext, Image& colorAttachment, Image& depthAttachment);
 
-void NameVulkanObject(VkDevice vkLogicalDevice, VkObjectType vkObjectType, uint64_t vkObject, std::string vkObjectName);
+void NameVulkanObject(VkDevice vkLogicalDevice, VkObjectType vkObjectType, uint64_t vkObject, const std::string& vkObjectName);
 
 #endif

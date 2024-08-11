@@ -23,15 +23,12 @@ int main()
     Check(lpp::LppIsValidDefaultAgent(&lppAgent), "Failed to initialize LivePP");
 
     // Enable all loaded modules.
-    lppAgent.EnableModule(lpp::LppGetCurrentModulePath(),
-        lpp::LPP_MODULES_OPTION_ALL_IMPORT_MODULES, nullptr, nullptr);
+    lppAgent.EnableModule(lpp::LppGetCurrentModulePath(), lpp::LPP_MODULES_OPTION_ALL_IMPORT_MODULES, nullptr, nullptr);
 #endif
 
     // Launch Vulkan + OS Window
     // --------------------------------------
-
-    std::unique_ptr<RenderContext> pRenderContext =
-        std::make_unique<RenderContext>(kWindowWidth, kWindowHeight);
+    std::unique_ptr<RenderContext> pRenderContext = std::make_unique<RenderContext>(kWindowWidth, kWindowHeight);
 
     // Create render delegate.
     // ---------------------
@@ -47,7 +44,7 @@ int main()
     // Create render index from the delegate.
     // ---------------------
 
-    auto pRenderIndex = HdRenderIndex::New(pRenderDelegate.get(), { &renderContextHydraDriver });
+    auto* pRenderIndex = HdRenderIndex::New(pRenderDelegate.get(), { &renderContextHydraDriver });
     TF_VERIFY(pRenderIndex != nullptr);
 
     // Load a USD Stage.
@@ -60,8 +57,7 @@ int main()
     // Construct a scene delegate from the stock OpenUSD scene delegate
     // implementation.
     // ---------------------
-    auto pSceneDelegate =
-        std::make_unique<UsdImagingDelegate>(pRenderIndex, SdfPath::AbsoluteRootPath());
+    auto pSceneDelegate = std::make_unique<UsdImagingDelegate>(pRenderIndex, SdfPath::AbsoluteRootPath());
     TF_VERIFY(pSceneDelegate != nullptr);
 
     // Pipe the USD stage into the scene delegate (will create render primitives
@@ -82,8 +78,7 @@ int main()
     // Create a free camera.
     // ---------------------
 
-    auto pFreeCameraSceneDelegate =
-        std::make_unique<HdxFreeCameraSceneDelegate>(pRenderIndex, SdfPath("/freeCamera"));
+    auto pFreeCameraSceneDelegate = std::make_unique<HdxFreeCameraSceneDelegate>(pRenderIndex, SdfPath("/freeCamera"));
 
     // Create the render tasks.
     // ---------------------
@@ -109,7 +104,7 @@ int main()
     // Command Recording
     // ------------------------------------------------
 
-    float time = 0.0f;
+    float time = 0.0F;
 
     auto RecordCommands = [&](FrameParams frameParams) {
         // Forward the current backbuffer and commandbuffer to the delegate.
@@ -120,8 +115,7 @@ int main()
 
 #ifdef USE_FREE_CAMERA
         auto WrapMatrix = [](glm::mat4 m) {
-            return GfMatrix4f(m[0][0], m[0][1], m[0][2], m[0][3], m[1][0], m[1][1], m[1][2],
-                m[1][3], m[2][0], m[2][1], m[2][2], m[2][3], m[3][0], m[3][1], m[3][2], m[3][3]);
+            return GfMatrix4f(m[0][0], m[0][1], m[0][2], m[0][3], m[1][0], m[1][1], m[1][2], m[1][3], m[2][0], m[2][1], m[2][2], m[2][3], m[3][0], m[3][1], m[3][2], m[3][3]);
         };
 
         // Define the camera position (eye), target position (center), and up vector
@@ -135,15 +129,14 @@ int main()
 
         // Manually use GLM since USD's matrix utilities are very bad.
         // GfMatrix4f::LookAt seems super broken.
-        pFreeCameraSceneDelegate->SetMatrices(
-            (GfMatrix4d)WrapMatrix(view), (GfMatrix4d)WrapMatrix(proj));
+        pFreeCameraSceneDelegate->SetMatrices((GfMatrix4d)WrapMatrix(view), (GfMatrix4d)WrapMatrix(proj));
 #endif
 
         // Invoke Hydra
         auto renderTasks = taskController.GetRenderingTasks();
         engine.Execute(pRenderIndex, &renderTasks);
 
-        time += (float)frameParams.deltaTime;
+        time += static_cast<float>(frameParams.deltaTime);
     };
 
     // Kick off render-loop.

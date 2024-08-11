@@ -6,8 +6,8 @@ class RenderContext;
 
 #include <queue>
 
-typedef std::pair<VkBuffer, VmaAllocation> BufferResource;
-typedef std::pair<VkImage, VmaAllocation> ImageResource;
+using BufferResource = std::pair<VkBuffer, VmaAllocation>;
+using ImageResource  = std::pair<VkImage, VmaAllocation>;
 
 class ResourceRegistry : public HdResourceRegistry
 {
@@ -32,22 +32,19 @@ public:
     // Queues a GPU-upload request for vertex and index mesh buffers.
     inline uint64_t PushMeshRequest(MeshRequest meshRequest)
     {
-        m_PendingMeshRequests.push({ m_MeshCounter, meshRequest });
+        m_PendingMeshRequests.emplace(m_MeshCounter, meshRequest);
         return m_MeshCounter++;
     }
+
     inline uint64_t PushMaterialRequest(MaterialRequest materialRequest)
     {
-        m_PendingMaterialRequests.push({ m_MaterialCounter, materialRequest });
+        m_PendingMaterialRequests.emplace(m_MaterialCounter, materialRequest);
         return m_MaterialCounter++;
     }
 
-    bool GetMeshResources(uint64_t resourceHandle, BufferResource& positionBuffer,
-        BufferResource& normalBuffer, BufferResource& indexBuffer);
+    bool GetMeshResources(uint64_t resourceHandle, BufferResource& positionBuffer, BufferResource& normalBuffer, BufferResource& indexBuffer);
 
-    ResourceRegistry(RenderContext* pRenderContext) :
-        m_RenderContext(pRenderContext), m_MeshCounter(0u), m_MaterialCounter(0u)
-    {
-    }
+    explicit ResourceRegistry(RenderContext* pRenderContext) : m_RenderContext(pRenderContext) {}
 
 protected:
     void _Commit() override;
@@ -56,8 +53,8 @@ protected:
 private:
     RenderContext* m_RenderContext;
 
-    const static uint32_t kMaxBufferResources = 512;
-    const static uint32_t kMaxImageResources  = 512;
+    const static uint32_t kMaxBufferResources = 512U;
+    const static uint32_t kMaxImageResources  = 512U;
 
     // Resources.
     std::array<BufferResource, kMaxBufferResources> m_BufferResources;
@@ -66,8 +63,8 @@ private:
     std::queue<std::pair<uint64_t, MeshRequest>> m_PendingMeshRequests;
     std::queue<std::pair<uint64_t, MaterialRequest>> m_PendingMaterialRequests;
 
-    uint64_t m_MeshCounter;
-    uint64_t m_MaterialCounter;
+    uint64_t m_MeshCounter {};
+    uint64_t m_MaterialCounter {};
 };
 
 #endif

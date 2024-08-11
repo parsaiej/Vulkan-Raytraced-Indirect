@@ -18,13 +18,12 @@ void RenderDelegate::SetDrivers(HdDriverVector const& drivers)
             m_RenderContext = driver->driver.UncheckedGet<RenderContext*>();
     }
 
-    Check(m_RenderContext, "Failed to find the custom Vulkan driver for Hydra.");
+    Check(m_RenderContext != nullptr, "Failed to find the custom Vulkan driver for Hydra.");
 
     m_ResourceRegistry = std::make_shared<ResourceRegistry>(m_RenderContext);
 }
 
-HdRenderPassSharedPtr RenderDelegate::CreateRenderPass(
-    HdRenderIndex* pRenderIndex, HdRprimCollection const& collection)
+HdRenderPassSharedPtr RenderDelegate::CreateRenderPass(HdRenderIndex* pRenderIndex, HdRprimCollection const& collection)
 {
     return HdRenderPassSharedPtr(new RenderPass(pRenderIndex, collection, this));
 }

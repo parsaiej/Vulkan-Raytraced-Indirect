@@ -14,15 +14,14 @@ public:
     constexpr static const char* kMaterialInputRoughness = "specular_roughness";
     constexpr static const char* kMaterialInputMetallic  = "metalness";
 
-    void Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParam,
-        HdDirtyBits* pDirtyBits) override;
+    void Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParam, HdDirtyBits* pDirtyBits) override;
 
-    HdDirtyBits GetInitialDirtyBitsMask() const override;
+    [[nodiscard]] HdDirtyBits GetInitialDirtyBitsMask() const override;
 
 private:
     RenderDelegate* m_Owner;
 
-    uint64_t m_ResourceHandle;
+    uint64_t m_ResourceHandle {};
 };
 
 #endif
