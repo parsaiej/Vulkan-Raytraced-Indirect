@@ -44,6 +44,7 @@ public:
     }
 
     bool GetMeshResources(uint64_t resourceHandle, BufferResource& positionBuffer, BufferResource& normalBuffer, BufferResource& indexBuffer);
+    bool GetMaterialResources(uint64_t resourceHandle, ImageResource& albedoImage);
 
     explicit ResourceRegistry(RenderContext* pRenderContext) : m_RenderContext(pRenderContext) {}
 

@@ -3,16 +3,31 @@
 #include <RenderContext.h>
 #include <ResourceRegistry.h>
 
-void ProcessMaterialRequest(RenderContext* pRenderContext, const ResourceRegistry::MaterialRequest& materialRequest, BufferResource& stagingBuffer)
+void ProcessMaterialRequest(RenderContext* pRenderContext, const ResourceRegistry::MaterialRequest& materialRequest, BufferResource& stagingBuffer, ImageResource& albedoImage)
 {
     spdlog::info("Processing Material Request for {}", materialRequest.id.GetName());
 
-    auto CreateMaterialImage = [&]() {};
+    if (materialRequest.imagePathAlbedo.GetResolvedPath().empty())
+        return;
 
-    spdlog::info("Image Path: {}", materialRequest.imagePathAlbedo.GetResolvedPath());
-    spdlog::info("Image Path: {}", materialRequest.imagePathMetallic.GetResolvedPath());
-    spdlog::info("Image Path: {}", materialRequest.imagePathNormal.GetResolvedPath());
-    spdlog::info("Image Path: {}", materialRequest.imagePathRoughness.GetResolvedPath());
+    int   width      = 0;
+    int   height     = 0;
+    int   channels   = 0;
+    auto* pImageData = stbi_load(materialRequest.imagePathAlbedo.GetResolvedPath().c_str(), &width, &height, &channels, 0);
+
+    // Copy Host -> Staging Memory.
+    // -----------------------------------------------------
+
+    void* pMappedStagingMemory = nullptr;
+    Check(vmaMapMemory(pRenderContext->GetAllocator(), stagingBuffer.second, &pMappedStagingMemory), "Failed to map a pointer to staging memory.");
+    {
+        // Copy from Host -> Staging memory.
+        memcpy(pMappedStagingMemory, pImageData, channels * width * height); // NOLINT
+
+        vmaUnmapMemory(pRenderContext->GetAllocator(), stagingBuffer.second);
+    }
+
+    stbi_image_free(pImageData);
 }
 
 void ProcessMeshRequest(RenderContext*                       pRenderContext,
@@ -153,7 +168,8 @@ void ResourceRegistry::_Commit()
     {
         auto materialRequest = m_PendingMaterialRequests.front();
 
-        ProcessMaterialRequest(m_RenderContext, materialRequest.second, stagingBuffer);
+        const uint64_t& i = 1U * materialRequest.first;
+        ProcessMaterialRequest(m_RenderContext, materialRequest.second, stagingBuffer, m_ImageResources.at(i + 0U));
 
         m_PendingMaterialRequests.pop();
     }
@@ -183,3 +199,5 @@ bool ResourceRegistry::GetMeshResources(uint64_t resourceHandle, BufferResource&
 
     return true;
 }
+
+bool ResourceRegistry::GetMaterialResources(uint64_t resourceHandle, ImageResource& albedoImage) { return false; }
