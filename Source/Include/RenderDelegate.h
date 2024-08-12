@@ -18,11 +18,12 @@ const TfToken kTokenCurrenFrameParams   = TfToken("CurrentFrameParams");
 class RenderDelegate : public HdRenderDelegate
 {
 public:
+
     RenderDelegate() = default;
-    explicit RenderDelegate(HdRenderSettingsMap const& settingsMap) {};
+    explicit RenderDelegate(const HdRenderSettingsMap& settingsMap) {};
     ~RenderDelegate() override = default;
 
-    void SetDrivers(HdDriverVector const& drivers) override;
+    void SetDrivers(const HdDriverVector& drivers) override;
 
     [[nodiscard]] const TfTokenVector& GetSupportedRprimTypes() const override { return kSupportedRPrimTypes; };
     [[nodiscard]] const TfTokenVector& GetSupportedSprimTypes() const override { return kSupportedSPrimTypes; };
@@ -30,17 +31,17 @@ public:
 
     [[nodiscard]] HdResourceRegistrySharedPtr GetResourceRegistry() const override { return m_ResourceRegistry; };
 
-    HdRenderPassSharedPtr CreateRenderPass(HdRenderIndex* index, HdRprimCollection const& collection) override;
+    HdRenderPassSharedPtr CreateRenderPass(HdRenderIndex* index, const HdRprimCollection& collection) override;
 
-    HdInstancer* CreateInstancer(HdSceneDelegate* delegate, SdfPath const& id) override { return nullptr; };
-    void DestroyInstancer(HdInstancer* instancer) override {};
+    HdInstancer* CreateInstancer(HdSceneDelegate* delegate, const SdfPath& id) override { return nullptr; };
+    void         DestroyInstancer(HdInstancer* instancer) override {};
 
-    HdRprim* CreateRprim(TfToken const& typeId, SdfPath const& rprimId) override;
-    HdSprim* CreateSprim(TfToken const& typeId, SdfPath const& sprimId) override;
-    HdBprim* CreateBprim(TfToken const& typeId, SdfPath const& bprimId) override { return nullptr; };
+    HdRprim* CreateRprim(const TfToken& typeId, const SdfPath& rprimId) override;
+    HdSprim* CreateSprim(const TfToken& typeId, const SdfPath& sprimId) override;
+    HdBprim* CreateBprim(const TfToken& typeId, const SdfPath& bprimId) override { return nullptr; };
 
-    HdSprim* CreateFallbackSprim(TfToken const& /*typeId*/) override { return nullptr; };
-    HdBprim* CreateFallbackBprim(TfToken const& /*typeId*/) override { return nullptr; };
+    HdSprim* CreateFallbackSprim(const TfToken& /*typeId*/) override { return nullptr; };
+    HdBprim* CreateFallbackBprim(const TfToken& /*typeId*/) override { return nullptr; };
 
     void DestroyRprim(HdRprim* rPrim) override {};
     void DestroySprim(HdSprim* sprim) override {};
@@ -54,12 +55,13 @@ public:
     [[nodiscard]] HdRenderParam* GetRenderParam() const override { return nullptr; };
 
     inline RenderContext* GetRenderContext() { return m_RenderContext; };
-    inline std::mutex& GetRenderContextMutex() { return m_RenderContextMutex; }
+    inline std::mutex&    GetRenderContextMutex() { return m_RenderContextMutex; }
 
 private:
+
     // Reference to the custom Vulkan driver implementation.
     RenderContext* m_RenderContext {};
-    std::mutex m_RenderContextMutex;
+    std::mutex     m_RenderContextMutex;
 
     HdResourceRegistrySharedPtr m_ResourceRegistry;
 };

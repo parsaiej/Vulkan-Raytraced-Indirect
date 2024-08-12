@@ -72,9 +72,9 @@ struct Vertex
 struct FrameParams
 {
     VkCommandBuffer cmd;
-    VkImage backBuffer;
-    VkImageView backBufferView;
-    double deltaTime;
+    VkImage         backBuffer;
+    VkImageView     backBufferView;
+    double          deltaTime;
 };
 
 // Collection of vulkan primitives to hold an image.
@@ -82,8 +82,8 @@ struct FrameParams
 
 struct Image
 {
-    VkImage image;
-    VkImageView imageView;
+    VkImage       image;
+    VkImageView   imageView;
     VmaAllocation imageAllocation;
 };
 

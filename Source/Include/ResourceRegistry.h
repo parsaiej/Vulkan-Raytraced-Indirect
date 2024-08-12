@@ -12,9 +12,10 @@ using ImageResource  = std::pair<VkImage, VmaAllocation>;
 class ResourceRegistry : public HdResourceRegistry
 {
 public:
+
     struct MeshRequest
     {
-        SdfPath id;
+        SdfPath      id;
         VtVec3fArray pPoints;
         VtVec3fArray pNormals;
         VtVec3iArray pIndices;
@@ -22,7 +23,7 @@ public:
 
     struct MaterialRequest
     {
-        SdfPath id;
+        SdfPath      id;
         SdfAssetPath imagePathAlbedo;
         SdfAssetPath imagePathNormal;
         SdfAssetPath imagePathRoughness;
@@ -47,10 +48,12 @@ public:
     explicit ResourceRegistry(RenderContext* pRenderContext) : m_RenderContext(pRenderContext) {}
 
 protected:
+
     void _Commit() override;
     void _GarbageCollect() override;
 
 private:
+
     RenderContext* m_RenderContext;
 
     const static uint32_t kMaxBufferResources = 512U;
@@ -58,9 +61,9 @@ private:
 
     // Resources.
     std::array<BufferResource, kMaxBufferResources> m_BufferResources;
-    std::array<ImageResource, kMaxImageResources> m_ImageResources;
+    std::array<ImageResource, kMaxImageResources>   m_ImageResources;
 
-    std::queue<std::pair<uint64_t, MeshRequest>> m_PendingMeshRequests;
+    std::queue<std::pair<uint64_t, MeshRequest>>     m_PendingMeshRequests;
     std::queue<std::pair<uint64_t, MaterialRequest>> m_PendingMaterialRequests;
 
     uint64_t m_MeshCounter {};

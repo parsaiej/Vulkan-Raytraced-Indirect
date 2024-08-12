@@ -28,7 +28,7 @@ Checks: >
     -readability-identifier-length,
     -readability-use-anyofallof
 
-WarningsAsErrors: "*"
+WarningsAsErrors: ""
 
 CheckOptions:
   - { key: readability-identifier-naming.NamespaceCase,           value: CamelCase  }

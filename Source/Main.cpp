@@ -106,7 +106,8 @@ int main()
 
     float time = 0.0F;
 
-    auto RecordCommands = [&](FrameParams frameParams) {
+    auto RecordCommands = [&](FrameParams frameParams)
+    {
         // Forward the current backbuffer and commandbuffer to the delegate.
         // There might be a simpler way to manage this by writing my own HdTask, but
         // it would require sacrificing the simplicity that HdxTaskController
@@ -114,9 +115,8 @@ int main()
         pRenderDelegate->SetRenderSetting(kTokenCurrenFrameParams, VtValue(&frameParams));
 
 #ifdef USE_FREE_CAMERA
-        auto WrapMatrix = [](glm::mat4 m) {
-            return GfMatrix4f(m[0][0], m[0][1], m[0][2], m[0][3], m[1][0], m[1][1], m[1][2], m[1][3], m[2][0], m[2][1], m[2][2], m[2][3], m[3][0], m[3][1], m[3][2], m[3][3]);
-        };
+        auto WrapMatrix = [](glm::mat4 m)
+        { return GfMatrix4f(m[0][0], m[0][1], m[0][2], m[0][3], m[1][0], m[1][1], m[1][2], m[1][3], m[2][0], m[2][1], m[2][2], m[2][3], m[3][0], m[3][1], m[3][2], m[3][3]); };
 
         // Define the camera position (eye), target position (center), and up vector
         glm::vec3 eye    = glm::vec3(0.5f * sin(time), 0.5f, 0.5f * cos(time));

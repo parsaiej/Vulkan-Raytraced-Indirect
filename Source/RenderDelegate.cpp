@@ -10,7 +10,7 @@
 // Render Delegate Implementation
 // ------------------------------------------------------------
 
-void RenderDelegate::SetDrivers(HdDriverVector const& drivers)
+void RenderDelegate::SetDrivers(const HdDriverVector& drivers)
 {
     for (const auto& driver : drivers)
     {
@@ -23,12 +23,12 @@ void RenderDelegate::SetDrivers(HdDriverVector const& drivers)
     m_ResourceRegistry = std::make_shared<ResourceRegistry>(m_RenderContext);
 }
 
-HdRenderPassSharedPtr RenderDelegate::CreateRenderPass(HdRenderIndex* pRenderIndex, HdRprimCollection const& collection)
+HdRenderPassSharedPtr RenderDelegate::CreateRenderPass(HdRenderIndex* pRenderIndex, const HdRprimCollection& collection)
 {
     return HdRenderPassSharedPtr(new RenderPass(pRenderIndex, collection, this));
 }
 
-HdRprim* RenderDelegate::CreateRprim(TfToken const& typeId, SdfPath const& rprimId)
+HdRprim* RenderDelegate::CreateRprim(const TfToken& typeId, const SdfPath& rprimId)
 {
     if (typeId != HdPrimTypeTokens->mesh)
     {
@@ -39,7 +39,7 @@ HdRprim* RenderDelegate::CreateRprim(TfToken const& typeId, SdfPath const& rprim
     return new Mesh(rprimId, this);
 }
 
-HdSprim* RenderDelegate::CreateSprim(TfToken const& typeId, SdfPath const& sprimId)
+HdSprim* RenderDelegate::CreateSprim(const TfToken& typeId, const SdfPath& sprimId)
 {
     if (typeId == HdPrimTypeTokens->camera)
         return new HdCamera(sprimId);

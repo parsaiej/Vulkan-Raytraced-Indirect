@@ -3,12 +3,29 @@
 #include <RenderContext.h>
 #include <ResourceRegistry.h>
 
-void ProcessMeshRequest(
-    RenderContext* pRenderContext, ResourceRegistry::MeshRequest meshRequest, BufferResource& stagingBuffer, BufferResource& positionBuffer, BufferResource& normalBuffer, BufferResource& indexBuffer)
+void ProcessMaterialRequest(RenderContext* pRenderContext, const ResourceRegistry::MaterialRequest& materialRequest, BufferResource& stagingBuffer)
+{
+    spdlog::info("Processing Material Request for {}", materialRequest.id.GetName());
+
+    auto CreateMaterialImage = [&]() {};
+
+    spdlog::info("Image Path: {}", materialRequest.imagePathAlbedo.GetResolvedPath());
+    spdlog::info("Image Path: {}", materialRequest.imagePathMetallic.GetResolvedPath());
+    spdlog::info("Image Path: {}", materialRequest.imagePathNormal.GetResolvedPath());
+    spdlog::info("Image Path: {}", materialRequest.imagePathRoughness.GetResolvedPath());
+}
+
+void ProcessMeshRequest(RenderContext*                       pRenderContext,
+                        const ResourceRegistry::MeshRequest& meshRequest,
+                        BufferResource&                      stagingBuffer,
+                        BufferResource&                      positionBuffer,
+                        BufferResource&                      normalBuffer,
+                        BufferResource&                      indexBuffer)
 {
     spdlog::info("Processing Mesh Request for {}", meshRequest.id.GetName());
 
-    auto CreateMeshBuffer = [&](const void* pData, uint32_t dataSize, VkBufferUsageFlags usage) {
+    auto CreateMeshBuffer = [&](const void* pData, uint32_t dataSize, VkBufferUsageFlags usage)
+    {
         // Create dedicate device memory for the mesh buffer.
         // -----------------------------------------------------
 
@@ -52,8 +69,8 @@ void ProcessMeshRequest(
 
         VkCommandBuffer vkCommand = VK_NULL_HANDLE;
         Check(vkAllocateCommandBuffers(pRenderContext->GetDevice(), &vkCommandAllocateInfo, &vkCommand),
-            "Failed to created command buffer for uploading scene resource "
-            "memory.");
+              "Failed to created command buffer for uploading scene resource "
+              "memory.");
 
         VkCommandBufferBeginInfo vkCommandsBeginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
         {
@@ -99,9 +116,6 @@ void ResourceRegistry::_Commit()
     if (m_PendingMeshRequests.empty())
         return;
 
-    // Commit Mesh Requests
-    // ----------------------------------------------------------
-
     // Create a block of staging buffer memory.
     BufferResource stagingBuffer;
     {
@@ -118,6 +132,9 @@ void ResourceRegistry::_Commit()
         Check(vmaCreateBuffer(m_RenderContext->GetAllocator(), &bufferInfo, &allocInfo, &stagingBuffer.first, &stagingBuffer.second, nullptr), "Failed to create staging buffer memory.");
     }
 
+    // Commit Mesh Requests
+    // ----------------------------------------------------------
+
     while (!m_PendingMeshRequests.empty())
     {
         auto meshRequest = m_PendingMeshRequests.front();
@@ -129,44 +146,20 @@ void ResourceRegistry::_Commit()
         m_PendingMeshRequests.pop();
     }
 
-    // Release staging memory.
-    vmaDestroyBuffer(m_RenderContext->GetAllocator(), stagingBuffer.first, stagingBuffer.second);
-
-    return;
-
     // Commit Material Requests
     // -----------------------------------------------------------
-
-    ImageResource stagingImage;
-    {
-        VkImageCreateInfo imageInfo = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
-        imageInfo.usage             = VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-
-        // Staging memory is 8x8k SRGB.
-        imageInfo.extent      = { 8192U, 8192U, 1U };
-        imageInfo.format      = VK_FORMAT_R8G8B8A8_SRGB;
-        imageInfo.mipLevels   = 1U;
-        imageInfo.arrayLayers = 1U;
-        imageInfo.samples     = VK_SAMPLE_COUNT_1_BIT;
-        imageInfo.imageType   = VK_IMAGE_TYPE_2D;
-
-        VmaAllocationCreateInfo allocInfo = {};
-        allocInfo.usage                   = VMA_MEMORY_USAGE_AUTO;
-        allocInfo.flags                   = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
-
-        Check(vmaCreateImage(m_RenderContext->GetAllocator(), &imageInfo, &allocInfo, &stagingImage.first, &stagingImage.second, nullptr), "Failed to create staging image memory.");
-    }
 
     while (!m_PendingMaterialRequests.empty())
     {
         auto materialRequest = m_PendingMaterialRequests.front();
 
-        spdlog::info("Processing Material Request for {}", materialRequest.second.id.GetName());
+        ProcessMaterialRequest(m_RenderContext, materialRequest.second, stagingBuffer);
 
         m_PendingMaterialRequests.pop();
     }
 
-    vmaDestroyImage(m_RenderContext->GetAllocator(), stagingImage.first, stagingBuffer.second);
+    // Release staging memory.
+    vmaDestroyBuffer(m_RenderContext->GetAllocator(), stagingBuffer.first, stagingBuffer.second);
 }
 
 void ResourceRegistry::_GarbageCollect()

@@ -12,10 +12,7 @@
 
 // #define MATERIAL_DEBUG_PRINT_NETWORK
 
-HdDirtyBits Material::GetInitialDirtyBitsMask() const
-{
-    return HdChangeTracker::AllSceneDirtyBits;
-}
+HdDirtyBits Material::GetInitialDirtyBitsMask() const { return HdChangeTracker::AllSceneDirtyBits; }
 
 void TraceNodeRecursive(HdMaterialNetwork2* pNetwork, HdMaterialNode2* pNode, uint32_t traceDepth = 0U)
 {
@@ -49,7 +46,7 @@ T TryGetSingleParameterForInput(const char* inputName, HdMaterialNetwork2* pNetw
     for (const auto& input : pNode->inputConnections)
     {
         if (strcmp(input.first.GetText(), inputName) != 0)
-            return T();
+            continue;
 
         for (const auto& connection : input.second)
         {
@@ -120,7 +117,7 @@ void Material::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParam
     auto network = HdConvertToHdMaterialNetwork2(materialResource.UncheckedGet<HdMaterialNetworkMap>());
 
     // Get the Surface Terminal
-    auto const& terminalConnectionIterator = network.terminals.find(HdMaterialTerminalTokens->surface);
+    const auto& terminalConnectionIterator = network.terminals.find(HdMaterialTerminalTokens->surface);
 
     Check(terminalConnectionIterator != network.terminals.end(), "Failed to locate a surface node on the material.");
 
@@ -138,10 +135,11 @@ void Material::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParam
     // Obtain the resource registry + push the material request.
     auto pResourceRegistry = std::static_pointer_cast<ResourceRegistry>(pSceneDelegate->GetRenderIndex().GetResourceRegistry());
     {
-        m_ResourceHandle = pResourceRegistry->PushMaterialRequest({ id, TryGetSingleParameterForInput<SdfAssetPath>(kMaterialInputBaseColor, &network, &rootNode->second),
-            TryGetSingleParameterForInput<SdfAssetPath>(kMaterialInputNormal, &network, &rootNode->second),
-            TryGetSingleParameterForInput<SdfAssetPath>(kMaterialInputRoughness, &network, &rootNode->second),
-            TryGetSingleParameterForInput<SdfAssetPath>(kMaterialInputMetallic, &network, &rootNode->second) });
+        m_ResourceHandle = pResourceRegistry->PushMaterialRequest({ id,
+                                                                    TryGetSingleParameterForInput<SdfAssetPath>(kMaterialInputBaseColor, &network, &rootNode->second),
+                                                                    TryGetSingleParameterForInput<SdfAssetPath>(kMaterialInputNormal, &network, &rootNode->second),
+                                                                    TryGetSingleParameterForInput<SdfAssetPath>(kMaterialInputRoughness, &network, &rootNode->second),
+                                                                    TryGetSingleParameterForInput<SdfAssetPath>(kMaterialInputMetallic, &network, &rootNode->second) });
     }
 
     // Clear the dirty bits.

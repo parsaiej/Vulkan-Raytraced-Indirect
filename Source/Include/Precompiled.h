@@ -3,12 +3,13 @@
 
 #ifdef _DEBUG
 // Logging of VMA memory leaks in debug mode.
-#define VMA_LEAK_LOG_FORMAT(format, ...)                                                                                                                                                               \
-    do                                                                                                                                                                                                 \
-    {                                                                                                                                                                                                  \
-        printf((format), __VA_ARGS__);                                                                                                                                                                 \
-        printf("\n");                                                                                                                                                                                  \
-    } while (false)
+#define VMA_LEAK_LOG_FORMAT(format, ...) \
+    do                                   \
+    {                                    \
+        printf((format), __VA_ARGS__);   \
+        printf("\n");                    \
+    }                                    \
+    while (false)
 #endif
 
 /* clang-format off */
@@ -24,7 +25,6 @@
 
 #include <fstream>
 #include <intrin.h>
-#include <ranges>
 
 // LivePP Includes (If enabled)
 // ---------------------------------------------------------

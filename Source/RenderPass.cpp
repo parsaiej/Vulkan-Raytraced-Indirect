@@ -8,7 +8,7 @@
 // Render Pass Implementation
 // ------------------------------------------------------------
 
-RenderPass::RenderPass(HdRenderIndex* pRenderIndex, HdRprimCollection const& collection, RenderDelegate* pRenderDelegate) : HdRenderPass(pRenderIndex, collection), m_Owner(pRenderDelegate)
+RenderPass::RenderPass(HdRenderIndex* pRenderIndex, const HdRprimCollection& collection, RenderDelegate* pRenderDelegate) : HdRenderPass(pRenderIndex, collection), m_Owner(pRenderDelegate)
 {
     // Grab the render context.
     auto* pRenderContext = m_Owner->GetRenderContext();
@@ -22,13 +22,14 @@ RenderPass::RenderPass(HdRenderIndex* pRenderIndex, HdRprimCollection const& col
     // --------------------------------------
 
     Check(CreatePhysicallyBasedMaterialDescriptorLayout(pRenderContext->GetDevice(), m_DescriptorSetLayout),
-        "Failed to create a Vulkan Descriptor Set Layout for Physically Based "
-        "Materials.");
+          "Failed to create a Vulkan Descriptor Set Layout for Physically Based "
+          "Materials.");
 
     // Shader Creation Utility
     // ------------------------------------------------
 
-    auto LoadShader = [&](ShaderID shaderID, const char* filePath, VkShaderCreateInfoEXT vkShaderInfo) {
+    auto LoadShader = [&](ShaderID shaderID, const char* filePath, VkShaderCreateInfoEXT vkShaderInfo)
+    {
         std::vector<char> shaderByteCode;
         Check(LoadByteCode(filePath, shaderByteCode), std::format("Failed to read shader bytecode: {}", filePath).c_str());
 
@@ -124,7 +125,7 @@ RenderPass::~RenderPass()
         vkDestroyShaderEXT(pRenderContext->GetDevice(), shader.second, nullptr);
 }
 
-void RenderPass::_Execute(HdRenderPassStateSharedPtr const& renderPassState, TfTokenVector const& renderTags)
+void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, const TfTokenVector& renderTags)
 {
     // Grab the render context.
     auto* pRenderContext = m_Owner->GetRenderContext();
@@ -132,8 +133,15 @@ void RenderPass::_Execute(HdRenderPassStateSharedPtr const& renderPassState, TfT
     // Grab a handle to the current frame.
     auto* pFrame = m_Owner->GetRenderSetting(kTokenCurrenFrameParams).UncheckedGet<FrameParams*>();
 
-    auto ColorAttachmentBarrier = [&](VkCommandBuffer vkCommand, VkImage vkImage, VkImageLayout vkLayoutOld, VkImageLayout vkLayoutNew, VkAccessFlags2 vkAccessSrc, VkAccessFlags2 vkAccessDst,
-                                      VkPipelineStageFlags2 vkStageSrc, VkPipelineStageFlags2 vkStageDst) {
+    auto  ColorAttachmentBarrier = [&](VkCommandBuffer vkCommand,
+                                      VkImage vkImage,
+                                      VkImageLayout vkLayoutOld,
+                                      VkImageLayout vkLayoutNew,
+                                      VkAccessFlags2 vkAccessSrc,
+                                      VkAccessFlags2 vkAccessDst,
+                                      VkPipelineStageFlags2 vkStageSrc,
+                                      VkPipelineStageFlags2 vkStageDst)
+    {
         VkImageSubresourceRange imageSubresource;
         {
             imageSubresource.levelCount     = 1U;
@@ -190,8 +198,14 @@ void RenderPass::_Execute(HdRenderPassStateSharedPtr const& renderPassState, TfT
     // Record
     // --------------------------------------------
 
-    ColorAttachmentBarrier(pFrame->cmd, m_ColorAttachment.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_ACCESS_2_NONE, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-        VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT);
+    ColorAttachmentBarrier(pFrame->cmd,
+                           m_ColorAttachment.image,
+                           VK_IMAGE_LAYOUT_UNDEFINED,
+                           VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                           VK_ACCESS_2_NONE,
+                           VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+                           VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+                           VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT);
 
     VkRenderingInfo vkRenderingInfo = { VK_STRUCTURE_TYPE_RENDERING_INFO };
     {
@@ -200,24 +214,33 @@ void RenderPass::_Execute(HdRenderPassStateSharedPtr const& renderPassState, TfT
         vkRenderingInfo.pDepthAttachment     = &depthAttachmentInfo;
         vkRenderingInfo.pStencilAttachment   = VK_NULL_HANDLE;
         vkRenderingInfo.layerCount           = 1U;
-        vkRenderingInfo.renderArea           = { { 0, 0 }, { kWindowWidth, kWindowHeight } };
+        vkRenderingInfo.renderArea           = {
+            {            0,             0 },
+            { kWindowWidth, kWindowHeight }
+        };
     }
     vkCmdBeginRendering(pFrame->cmd, &vkRenderingInfo);
 
-    std::array<VkShaderStageFlagBits, 5> vkGraphicsShaderStageBits = { VK_SHADER_STAGE_VERTEX_BIT, VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT, VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT,
-        VK_SHADER_STAGE_GEOMETRY_BIT, VK_SHADER_STAGE_FRAGMENT_BIT };
+    std::array<VkShaderStageFlagBits, 5> vkGraphicsShaderStageBits = { VK_SHADER_STAGE_VERTEX_BIT,
+                                                                       VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT,
+                                                                       VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT,
+                                                                       VK_SHADER_STAGE_GEOMETRY_BIT,
+                                                                       VK_SHADER_STAGE_FRAGMENT_BIT };
 
-    std::array<VkShaderEXT, 5> vkGraphicsShaders = { m_ShaderMap[ShaderID::MeshVert], VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE, m_ShaderMap[ShaderID::LitFrag] };
+    std::array<VkShaderEXT, 5>           vkGraphicsShaders = { m_ShaderMap[ShaderID::MeshVert], VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE, m_ShaderMap[ShaderID::LitFrag] };
 
     vkCmdBindShadersEXT(pFrame->cmd, static_cast<uint32_t>(vkGraphicsShaderStageBits.size()), vkGraphicsShaderStageBits.data(), vkGraphicsShaders.data());
 
     SetDefaultRenderState(pFrame->cmd);
 
-    vkCmdSetVertexInputEXT(
-        pFrame->cmd, static_cast<uint32_t>(m_VertexInputBindings.size()), m_VertexInputBindings.data(), static_cast<uint32_t>(m_VertexInputAttributes.size()), m_VertexInputAttributes.data());
+    vkCmdSetVertexInputEXT(pFrame->cmd,
+                           static_cast<uint32_t>(m_VertexInputBindings.size()),
+                           m_VertexInputBindings.data(),
+                           static_cast<uint32_t>(m_VertexInputAttributes.size()),
+                           m_VertexInputAttributes.data());
 
-    auto* pScene    = pRenderContext->GetScene();
-    auto pResources = std::static_pointer_cast<ResourceRegistry>(m_Owner->GetResourceRegistry());
+    auto* pScene     = pRenderContext->GetScene();
+    auto  pResources = std::static_pointer_cast<ResourceRegistry>(m_Owner->GetResourceRegistry());
 
     // Update camera matrices.
     m_PushConstants.MatrixVP = GfMatrix4f(renderPassState->GetWorldToViewMatrix()) * GfMatrix4f(renderPassState->GetProjectionMatrix());
@@ -235,7 +258,7 @@ void RenderPass::_Execute(HdRenderPassStateSharedPtr const& renderPassState, TfT
         vkCmdBindIndexBuffer(pFrame->cmd, indexBuffer.first, 0U, VK_INDEX_TYPE_UINT32);
 
         std::array<VkDeviceSize, 2> vertexBufferOffset = { 0U, 0U };
-        std::array<VkBuffer, 2> vertexBuffers          = { positionBuffer.first, normalBuffer.first };
+        std::array<VkBuffer, 2>     vertexBuffers      = { positionBuffer.first, normalBuffer.first };
 
         vkCmdBindVertexBuffers(pFrame->cmd, 0U, 2U, vertexBuffers.data(), vertexBufferOffset.data());
 
@@ -249,11 +272,23 @@ void RenderPass::_Execute(HdRenderPassStateSharedPtr const& renderPassState, TfT
 
     // Copy the internal color attachment to back buffer.
 
-    ColorAttachmentBarrier(pFrame->cmd, m_ColorAttachment.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_ACCESS_2_NONE, VK_ACCESS_2_MEMORY_READ_BIT,
-        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_2_TRANSFER_BIT);
+    ColorAttachmentBarrier(pFrame->cmd,
+                           m_ColorAttachment.image,
+                           VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                           VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                           VK_ACCESS_2_NONE,
+                           VK_ACCESS_2_MEMORY_READ_BIT,
+                           VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                           VK_PIPELINE_STAGE_2_TRANSFER_BIT);
 
-    ColorAttachmentBarrier(pFrame->cmd, pFrame->backBuffer, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_ACCESS_2_MEMORY_READ_BIT, VK_ACCESS_2_MEMORY_WRITE_BIT,
-        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_2_TRANSFER_BIT);
+    ColorAttachmentBarrier(pFrame->cmd,
+                           pFrame->backBuffer,
+                           VK_IMAGE_LAYOUT_UNDEFINED,
+                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                           VK_ACCESS_2_MEMORY_READ_BIT,
+                           VK_ACCESS_2_MEMORY_WRITE_BIT,
+                           VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                           VK_PIPELINE_STAGE_2_TRANSFER_BIT);
 
     VkImageCopy backBufferCopy = {};
     {
@@ -263,6 +298,12 @@ void RenderPass::_Execute(HdRenderPassStateSharedPtr const& renderPassState, TfT
     }
     vkCmdCopyImage(pFrame->cmd, m_ColorAttachment.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, pFrame->backBuffer, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1U, &backBufferCopy);
 
-    ColorAttachmentBarrier(pFrame->cmd, pFrame->backBuffer, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_ACCESS_2_MEMORY_WRITE_BIT, VK_ACCESS_2_MEMORY_READ_BIT,
-        VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT);
+    ColorAttachmentBarrier(pFrame->cmd,
+                           pFrame->backBuffer,
+                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                           VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                           VK_ACCESS_2_MEMORY_WRITE_BIT,
+                           VK_ACCESS_2_MEMORY_READ_BIT,
+                           VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                           VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT);
 }

@@ -6,13 +6,14 @@ class RenderDelegate;
 class Mesh : public HdMesh
 {
 public:
-    Mesh(SdfPath const& rprimId, RenderDelegate* pRenderDelegate) : HdMesh(rprimId), m_Owner(pRenderDelegate) {}
+
+    Mesh(const SdfPath& rprimId, RenderDelegate* pRenderDelegate) : HdMesh(rprimId), m_Owner(pRenderDelegate) {}
 
     ~Mesh() override = default;
 
     HdDirtyBits GetInitialDirtyBitsMask() const override;
 
-    void Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParam, HdDirtyBits* pDirtyBits, TfToken const& reprToken) override;
+    void Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParam, HdDirtyBits* pDirtyBits, const TfToken& reprToken) override;
 
     void Finalize(HdRenderParam* renderParam) override;
 
@@ -21,11 +22,13 @@ public:
     inline const GfMatrix4f& GetLocalToWorld() const { return m_LocalToWorld; }
 
 protected:
+
     HdDirtyBits _PropagateDirtyBits(HdDirtyBits bits) const override;
 
-    void _InitRepr(TfToken const& reprToken, HdDirtyBits* dirtyBits) override;
+    void _InitRepr(const TfToken& reprToken, HdDirtyBits* dirtyBits) override;
 
 private:
+
     RenderDelegate* m_Owner;
 
     uint64_t m_ResourceHandle {};

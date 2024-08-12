@@ -28,8 +28,8 @@ RenderContext::RenderContext(uint32_t width, uint32_t height)
     requiredInstanceLayers.push_back("VK_LAYER_KHRONOS_validation");
 #endif
 
-    uint32_t windowExtensionCount = 0U;
-    auto* pWindowExtensions       = glfwGetRequiredInstanceExtensions(&windowExtensionCount);
+    uint32_t                 windowExtensionCount = 0U;
+    auto*                    pWindowExtensions    = glfwGetRequiredInstanceExtensions(&windowExtensionCount);
 
     std::vector<const char*> requiredInstanceExtensions;
 
@@ -61,8 +61,8 @@ RenderContext::RenderContext(uint32_t width, uint32_t height)
 
     Check(SelectVulkanPhysicalDevice(m_VKInstance, requiredDeviceExtensions, m_VKDevicePhysical), "Failed to select a Vulkan Physical Device.");
     Check(GetVulkanQueueIndices(m_VKInstance, m_VKDevicePhysical, m_VKCommandQueueIndex),
-        "Failed to obtain the required Vulkan Queue Indices from the physical "
-        "device.");
+          "Failed to obtain the required Vulkan Queue Indices from the physical "
+          "device.");
     Check(CreateVulkanLogicalDevice(m_VKDevicePhysical, requiredDeviceExtensions, m_VKCommandQueueIndex, m_VKDeviceLogical), "Failed to create a Vulkan Logical Device");
 
     volkLoadDevice(m_VKDeviceLogical);
@@ -159,7 +159,7 @@ RenderContext::RenderContext(uint32_t width, uint32_t height)
         Check(vkAllocateCommandBuffers(m_VKDeviceLogical, &vkCommandBufferInfo, &m_VKCommandBuffers.at(frameIndex)), "Failed to allocate Vulkan Command Buffers.");
 
         VkSemaphoreCreateInfo vkSemaphoreInfo = { VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, nullptr, 0x0 };
-        VkFenceCreateInfo vkFenceInfo         = { VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, nullptr, VK_FENCE_CREATE_SIGNALED_BIT };
+        VkFenceCreateInfo     vkFenceInfo     = { VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, nullptr, VK_FENCE_CREATE_SIGNALED_BIT };
 
         // Synchronization Primitives
         Check(vkCreateSemaphore(m_VKDeviceLogical, &vkSemaphoreInfo, nullptr, &m_VKImageAvailableSemaphores.at(frameIndex)), "Failed to create Vulkan Semaphore.");
@@ -191,7 +191,9 @@ RenderContext::RenderContext(uint32_t width, uint32_t height)
     // Create Descriptor Pool
     // ------------------------------------------------
 
-    std::array<VkDescriptorPoolSize, 2> vkDescriptorPoolSizes = { { { VK_DESCRIPTOR_TYPE_SAMPLER, 1U }, { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 128U } } };
+    std::array<VkDescriptorPoolSize, 2> vkDescriptorPoolSizes = {
+        { { VK_DESCRIPTOR_TYPE_SAMPLER, 1U }, { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 128U } }
+    };
 
     VkDescriptorPoolCreateInfo vkDescriptorPoolInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
     {
@@ -259,7 +261,7 @@ void RenderContext::Dispatch(const std::function<void(FrameParams)>& commandsFun
         // Acquire the next swap chain image available.
         uint32_t vkCurrentSwapchainImageIndex = 0U;
         Check(vkAcquireNextImageKHR(m_VKDeviceLogical, m_VKSwapchain, UINT64_MAX, m_VKImageAvailableSemaphores.at(frameInFlightIndex), VK_NULL_HANDLE, &vkCurrentSwapchainImageIndex),
-            "Failed to acquire swapchain image.");
+              "Failed to acquire swapchain image.");
 
         // Get the current frame's command buffer.
         auto& vkCurrentCommandBuffer = m_VKCommandBuffers.at(frameInFlightIndex);

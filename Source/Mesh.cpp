@@ -8,19 +8,16 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/string_cast.hpp>
 
-HdDirtyBits Mesh::GetInitialDirtyBitsMask() const
-{
-    return HdChangeTracker::AllSceneDirtyBits;
-}
+HdDirtyBits Mesh::GetInitialDirtyBitsMask() const { return HdChangeTracker::AllSceneDirtyBits; }
 
-void Mesh::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParams, HdDirtyBits* pDirtyBits, TfToken const& reprToken)
+void        Mesh::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParams, HdDirtyBits* pDirtyBits, const TfToken& reprToken)
 {
     if ((*pDirtyBits & HdChangeTracker::AllSceneDirtyBits) == 0U)
         return;
 
     std::lock_guard<std::mutex> renderContextLock(m_Owner->GetRenderContextMutex());
 
-    SdfPath id = GetId();
+    SdfPath                     id = GetId();
 
     // Set debug color
     {
@@ -56,12 +53,9 @@ void Mesh::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParams, H
     *pDirtyBits &= ~HdChangeTracker::AllSceneDirtyBits;
 }
 
-HdDirtyBits Mesh::_PropagateDirtyBits(HdDirtyBits bits) const
-{
-    return bits;
-}
+HdDirtyBits Mesh::_PropagateDirtyBits(HdDirtyBits bits) const { return bits; }
 
-void Mesh::_InitRepr(TfToken const& reprToken, HdDirtyBits* pDirtyBits)
+void        Mesh::_InitRepr(const TfToken& reprToken, HdDirtyBits* pDirtyBits)
 {
     auto it = std::find_if(_reprs.begin(), _reprs.end(), _ReprComparator(reprToken));
 

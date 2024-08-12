@@ -6,7 +6,8 @@
 
 bool CreateRenderingAttachments(RenderContext* pRenderContext, Image& colorAttachment, Image& depthAttachment)
 {
-    auto CreateAttachment = [&](Image& attachment, VkFormat imageFormat, VkImageUsageFlags imageUsageFlags, VkImageAspectFlags imageAspect) {
+    auto CreateAttachment = [&](Image& attachment, VkFormat imageFormat, VkImageUsageFlags imageUsageFlags, VkImageAspectFlags imageAspect)
+    {
         VkImageCreateInfo imageInfo = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
         {
             imageInfo.imageType     = VK_IMAGE_TYPE_2D;
@@ -31,7 +32,7 @@ bool CreateRenderingAttachments(RenderContext* pRenderContext, Image& colorAttac
 
 #ifdef _DEBUG
         auto attachmentName = std::format("{} Attachment", ((imageAspect & VK_IMAGE_ASPECT_COLOR_BIT) != 0U) ? "Color" : "Depth");
-        NameVulkanObject(pRenderContext->GetDevice(), VK_OBJECT_TYPE_IMAGE, (uint64_t)attachment.image, attachmentName);
+        NameVulkanObject(pRenderContext->GetDevice(), VK_OBJECT_TYPE_IMAGE, reinterpret_cast<uint64_t>(attachment.image), attachmentName);
 #endif
 
         VkImageViewCreateInfo imageViewInfo = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
@@ -57,7 +58,7 @@ bool CreateRenderingAttachments(RenderContext* pRenderContext, Image& colorAttac
 bool CreatePhysicallyBasedMaterialDescriptorLayout(const VkDevice& vkLogicalDevice, VkDescriptorSetLayout& vkDescriptorSetLayout)
 {
     std::array<VkDescriptorSetLayoutBinding, 1> vkDescriptorSetLayoutBindings = { // Albedo only for now.
-        { { 0U, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1U, VK_SHADER_STAGE_FRAGMENT_BIT, VK_NULL_HANDLE } }
+                                                                                  { { 0U, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1U, VK_SHADER_STAGE_FRAGMENT_BIT, VK_NULL_HANDLE } }
     };
 
     VkDescriptorSetLayoutCreateInfo vkDescriptorSetLayoutInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
@@ -110,7 +111,8 @@ bool SelectVulkanPhysicalDevice(const VkInstance& vkInstance, const std::vector<
     std::vector<VkExtensionProperties> supportedDeviceExtensions(supportedDeviceExtensionCount);
     vkEnumerateDeviceExtensionProperties(vkPhysicalDevice, nullptr, &supportedDeviceExtensionCount, supportedDeviceExtensions.data());
 
-    auto CheckExtension = [&](const char* extensionName) {
+    auto CheckExtension = [&](const char* extensionName)
+    {
         for (const auto& deviceExtension : supportedDeviceExtensions)
         {
             if (strcmp(deviceExtension.extensionName, extensionName) == 0) // NOLINT
@@ -134,7 +136,7 @@ bool SelectVulkanPhysicalDevice(const VkInstance& vkInstance, const std::vector<
 
 bool CreateVulkanLogicalDevice(const VkPhysicalDevice& vkPhysicalDevice, const std::vector<const char*>& requiredExtensions, uint32_t vkGraphicsQueueIndex, VkDevice& vkLogicalDevice)
 {
-    float graphicsQueuePriority = 1.0;
+    float                   graphicsQueuePriority = 1.0;
 
     VkDeviceQueueCreateInfo vkGraphicsQueueCreateInfo = { VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO };
     vkGraphicsQueueCreateInfo.queueFamilyIndex        = vkGraphicsQueueIndex;
@@ -142,10 +144,10 @@ bool CreateVulkanLogicalDevice(const VkPhysicalDevice& vkPhysicalDevice, const s
     vkGraphicsQueueCreateInfo.pQueuePriorities        = &graphicsQueuePriority;
 
     VkPhysicalDeviceShaderObjectFeaturesEXT shaderObjectFeature = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_OBJECT_FEATURES_EXT };
-    VkPhysicalDeviceVulkan13Features vulkan13Features           = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES };
-    VkPhysicalDeviceVulkan12Features vulkan12Features           = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES };
-    VkPhysicalDeviceVulkan11Features vulkan11Features           = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES };
-    VkPhysicalDeviceFeatures2 vulkan10Features                  = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
+    VkPhysicalDeviceVulkan13Features        vulkan13Features    = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES };
+    VkPhysicalDeviceVulkan12Features        vulkan12Features    = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES };
+    VkPhysicalDeviceVulkan11Features        vulkan11Features    = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES };
+    VkPhysicalDeviceFeatures2               vulkan10Features    = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
 
     vulkan13Features.pNext = &shaderObjectFeature;
     vulkan12Features.pNext = &vulkan13Features;
@@ -201,7 +203,7 @@ bool LoadByteCode(const char* filePath, std::vector<char>& byteCode)
 
 void SetDefaultRenderState(VkCommandBuffer commandBuffer)
 {
-    static VkColorComponentFlags s_DefaultWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+    static VkColorComponentFlags   s_DefaultWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
 
     static VkColorBlendEquationEXT s_DefaultColorBlend = {
         // Color
@@ -215,9 +217,12 @@ void SetDefaultRenderState(VkCommandBuffer commandBuffer)
         VK_BLEND_OP_ADD,
     };
 
-    static VkBool32 s_DefaultBlendEnable    = VK_FALSE;
-    static VkViewport s_DefaultViewport     = { 0, kWindowHeight, kWindowWidth, -static_cast<int32_t>(kWindowHeight), 0.0, 1.0 };
-    static VkRect2D s_DefaultScissor        = { { 0, 0 }, { kWindowWidth, kWindowHeight } };
+    static VkBool32   s_DefaultBlendEnable = VK_FALSE;
+    static VkViewport s_DefaultViewport    = { 0, kWindowHeight, kWindowWidth, -static_cast<int32_t>(kWindowHeight), 0.0, 1.0 };
+    static VkRect2D   s_DefaultScissor     = {
+        {            0,             0 },
+        { kWindowWidth, kWindowHeight }
+    };
     static VkSampleMask s_DefaultSampleMask = 0xFFFFFFFF;
 
     vkCmdSetColorBlendEnableEXT(commandBuffer, 0U, 1U, &s_DefaultBlendEnable);

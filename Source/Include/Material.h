@@ -6,7 +6,8 @@ class RenderDelegate;
 class Material final : public HdMaterial
 {
 public:
-    Material(SdfPath const& id, RenderDelegate* pOwner) : HdMaterial(id), m_Owner(pOwner) {}
+
+    Material(const SdfPath& id, RenderDelegate* pOwner) : HdMaterial(id), m_Owner(pOwner) {}
 
     // MaterialX Standard Surface
     constexpr static const char* kMaterialInputBaseColor = "base_color";
@@ -16,9 +17,11 @@ public:
 
     void Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParam, HdDirtyBits* pDirtyBits) override;
 
-    [[nodiscard]] HdDirtyBits GetInitialDirtyBitsMask() const override;
+    [[nodiscard]]
+    HdDirtyBits GetInitialDirtyBitsMask() const override;
 
 private:
+
     RenderDelegate* m_Owner;
 
     uint64_t m_ResourceHandle {};
