@@ -3,6 +3,69 @@
 #include <RenderContext.h>
 #include <ResourceRegistry.h>
 
+void InterleaveImageAlpha(stbi_uc** pImageData, int& width, int& height, int& channels)
+{
+    auto* pAlphaImage = new unsigned char[width * height * 4]; // NOLINT
+
+    for (int i = 0; i < width * height; ++i)
+    {
+        pAlphaImage[i * 4 + 0] = (*pImageData)[i * 3 + 0]; // NOLINT R
+        pAlphaImage[i * 4 + 1] = (*pImageData)[i * 3 + 1]; // NOLINT G
+        pAlphaImage[i * 4 + 2] = (*pImageData)[i * 3 + 2]; // NOLINT B
+        pAlphaImage[i * 4 + 3] = 255;                      // NOLINT A (fully opaque)
+    }
+
+    // Free the original image memory
+    stbi_image_free(*pImageData);
+
+    *pImageData = pAlphaImage;
+
+    // There is now an alpha channel.
+    channels = 4U;
+}
+
+void ImageBarrier(RenderContext*        pRenderContext,
+                  VkCommandBuffer       vkCommand,
+                  VkImage               vkImage,
+                  VkImageLayout         vkLayoutOld,
+                  VkImageLayout         vkLayoutNew,
+                  VkAccessFlags2        vkAccessSrc,
+                  VkAccessFlags2        vkAccessDst,
+                  VkPipelineStageFlags2 vkStageSrc,
+                  VkPipelineStageFlags2 vkStageDst)
+{
+    VkImageSubresourceRange imageSubresource;
+    {
+        imageSubresource.levelCount     = 1U;
+        imageSubresource.layerCount     = 1U;
+        imageSubresource.baseMipLevel   = 0U;
+        imageSubresource.baseArrayLayer = 0U;
+        imageSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+    }
+
+    VkImageMemoryBarrier2 vkImageBarrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };
+    {
+        vkImageBarrier.image               = vkImage;
+        vkImageBarrier.oldLayout           = vkLayoutOld;
+        vkImageBarrier.newLayout           = vkLayoutNew;
+        vkImageBarrier.srcAccessMask       = vkAccessSrc;
+        vkImageBarrier.dstAccessMask       = vkAccessDst;
+        vkImageBarrier.srcStageMask        = vkStageSrc;
+        vkImageBarrier.dstStageMask        = vkStageDst;
+        vkImageBarrier.srcQueueFamilyIndex = pRenderContext->GetCommandQueueIndex();
+        vkImageBarrier.dstQueueFamilyIndex = pRenderContext->GetCommandQueueIndex();
+        vkImageBarrier.subresourceRange    = imageSubresource;
+    }
+
+    VkDependencyInfo vkDependencyInfo = { VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
+    {
+        vkDependencyInfo.imageMemoryBarrierCount = 1U;
+        vkDependencyInfo.pImageMemoryBarriers    = &vkImageBarrier;
+    }
+
+    vkCmdPipelineBarrier2(vkCommand, &vkDependencyInfo);
+};
+
 void ProcessMaterialRequest(RenderContext* pRenderContext, const ResourceRegistry::MaterialRequest& materialRequest, BufferResource& stagingBuffer, ImageResource& albedoImage)
 {
     spdlog::info("Processing Material Request for {}", materialRequest.id.GetName());
@@ -13,7 +76,10 @@ void ProcessMaterialRequest(RenderContext* pRenderContext, const ResourceRegistr
     int   width      = 0;
     int   height     = 0;
     int   channels   = 0;
-    auto* pImageData = stbi_load(materialRequest.imagePathAlbedo.GetResolvedPath().c_str(), &width, &height, &channels, 0);
+    auto* pImageData = stbi_load(materialRequest.imagePathAlbedo.GetResolvedPath().c_str(), &width, &height, &channels, STBI_rgb_alpha);
+
+    if (channels == 3U)
+        InterleaveImageAlpha(&pImageData, width, height, channels);
 
     // Copy Host -> Staging Memory.
     // -----------------------------------------------------
@@ -28,6 +94,93 @@ void ProcessMaterialRequest(RenderContext* pRenderContext, const ResourceRegistr
     }
 
     stbi_image_free(pImageData);
+
+    // Create dedicate device memory for the image
+    // -----------------------------------------------------
+
+    VkImageCreateInfo imageInfo = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
+    imageInfo.imageType         = VK_IMAGE_TYPE_2D;
+    imageInfo.arrayLayers       = 1U;
+    imageInfo.mipLevels         = 1U;
+    imageInfo.samples           = VK_SAMPLE_COUNT_1_BIT;
+    imageInfo.tiling            = VK_IMAGE_TILING_LINEAR;
+    imageInfo.extent            = { static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1U };
+    imageInfo.flags             = 0x0;
+    imageInfo.usage             = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    imageInfo.format            = VK_FORMAT_R8G8B8A8_SRGB;
+
+    VmaAllocationCreateInfo allocInfo = {};
+    allocInfo.usage                   = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+
+    Check(vmaCreateImage(pRenderContext->GetAllocator(), &imageInfo, &allocInfo, &albedoImage.first, &albedoImage.second, nullptr), "Failed to create dedicated image memory.");
+
+    // Copy Staging -> Device Memory.
+    // -----------------------------------------------------
+
+    VkCommandBufferAllocateInfo vkCommandAllocateInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
+    {
+        vkCommandAllocateInfo.commandBufferCount = 1U;
+        vkCommandAllocateInfo.commandPool        = pRenderContext->GetCommandPool();
+    }
+
+    VkCommandBuffer vkCommand = VK_NULL_HANDLE;
+    Check(vkAllocateCommandBuffers(pRenderContext->GetDevice(), &vkCommandAllocateInfo, &vkCommand),
+          "Failed to created command buffer for uploading scene resource "
+          "memory.");
+
+    VkCommandBufferBeginInfo vkCommandsBeginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+    {
+        vkCommandsBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    }
+    Check(vkBeginCommandBuffer(vkCommand, &vkCommandsBeginInfo), "Failed to begin recording upload commands");
+
+    VmaAllocationInfo allocationInfo;
+    vmaGetAllocationInfo(pRenderContext->GetAllocator(), albedoImage.second, &allocationInfo);
+
+    ImageBarrier(pRenderContext,
+                 vkCommand,
+                 albedoImage.first,
+                 VK_IMAGE_LAYOUT_UNDEFINED,
+                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                 VK_ACCESS_2_NONE,
+                 VK_ACCESS_2_MEMORY_READ_BIT,
+                 VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT_KHR,
+                 VK_PIPELINE_STAGE_2_TRANSFER_BIT);
+
+    VkBufferImageCopy bufferImageCopyInfo;
+    {
+        bufferImageCopyInfo.bufferOffset      = 0U;
+        bufferImageCopyInfo.bufferImageHeight = 0U;
+        bufferImageCopyInfo.bufferRowLength   = 0U;
+        bufferImageCopyInfo.imageExtent       = { static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1U };
+        bufferImageCopyInfo.imageOffset       = { 0U, 0U, 0U };
+        bufferImageCopyInfo.imageSubresource  = { VK_IMAGE_ASPECT_COLOR_BIT, 0U, 0U, 1U };
+    }
+    vkCmdCopyBufferToImage(vkCommand, stagingBuffer.first, albedoImage.first, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1U, &bufferImageCopyInfo);
+
+    ImageBarrier(pRenderContext,
+                 vkCommand,
+                 albedoImage.first,
+                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                 VK_ACCESS_2_NONE,
+                 VK_ACCESS_2_MEMORY_READ_BIT,
+                 VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                 VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT_KHR);
+
+    Check(vkEndCommandBuffer(vkCommand), "Failed to end recording upload commands");
+
+    VkSubmitInfo vkSubmitInfo = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
+    {
+        vkSubmitInfo.commandBufferCount = 1U;
+        vkSubmitInfo.pCommandBuffers    = &vkCommand;
+    }
+    Check(vkQueueSubmit(pRenderContext->GetCommandQueue(), 1U, &vkSubmitInfo, VK_NULL_HANDLE), "Failed to submit copy commands to the graphics queue.");
+
+    // Wait for the copy to complete.
+    // -----------------------------------------------------
+
+    Check(vkDeviceWaitIdle(pRenderContext->GetDevice()), "Failed to wait for copy commands to finish dispatching.");
 }
 
 void ProcessMeshRequest(RenderContext*                       pRenderContext,
@@ -52,7 +205,7 @@ void ProcessMeshRequest(RenderContext*                       pRenderContext,
         allocInfo.usage                   = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
 
         BufferResource meshBuffer;
-        Check(vmaCreateBuffer(pRenderContext->GetAllocator(), &bufferInfo, &allocInfo, &meshBuffer.first, &meshBuffer.second, nullptr), "Failed to create staging buffer memory.");
+        Check(vmaCreateBuffer(pRenderContext->GetAllocator(), &bufferInfo, &allocInfo, &meshBuffer.first, &meshBuffer.second, nullptr), "Failed to create dedicated buffer memory.");
 
 #ifdef _DEBUG
         // Label the allocation.
@@ -185,10 +338,8 @@ void ResourceRegistry::_GarbageCollect()
     for (uint32_t bufferIndex = 0U; bufferIndex < 3U * m_MeshCounter; bufferIndex++)
         vmaDestroyBuffer(m_RenderContext->GetAllocator(), m_BufferResources.at(bufferIndex).first, m_BufferResources.at(bufferIndex).second);
 
-    // for (uint32_t imageIndex = 0u; imageIndex < m_ImageCounter; imageIndex++)
-    //     vmaDestroyImage(m_RenderContext->GetAllocator(),
-    //     m_ImageResources[imageIndex].first,
-    //     m_ImageResources[imageIndex].second);
+    for (uint32_t imageIndex = 0U; imageIndex < 1U * m_MaterialCounter; imageIndex++)
+        vmaDestroyImage(m_RenderContext->GetAllocator(), m_ImageResources.at(imageIndex).first, m_ImageResources.at(imageIndex).second);
 }
 
 bool ResourceRegistry::GetMeshResources(uint64_t resourceHandle, BufferResource& positionBuffer, BufferResource& normalBuffer, BufferResource& indexBuffer)
