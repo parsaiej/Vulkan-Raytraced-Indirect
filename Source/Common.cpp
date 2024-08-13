@@ -136,7 +136,7 @@ bool SelectVulkanPhysicalDevice(const VkInstance& vkInstance, const std::vector<
 
 bool CreateVulkanLogicalDevice(const VkPhysicalDevice& vkPhysicalDevice, const std::vector<const char*>& requiredExtensions, uint32_t vkGraphicsQueueIndex, VkDevice& vkLogicalDevice)
 {
-    float                   graphicsQueuePriority = 1.0;
+    float graphicsQueuePriority = 1.0;
 
     VkDeviceQueueCreateInfo vkGraphicsQueueCreateInfo = { VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO };
     vkGraphicsQueueCreateInfo.queueFamilyIndex        = vkGraphicsQueueIndex;
@@ -203,7 +203,7 @@ bool LoadByteCode(const char* filePath, std::vector<char>& byteCode)
 
 void SetDefaultRenderState(VkCommandBuffer commandBuffer)
 {
-    static VkColorComponentFlags   s_DefaultWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+    static VkColorComponentFlags s_DefaultWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
 
     static VkColorBlendEquationEXT s_DefaultColorBlend = {
         // Color
@@ -296,13 +296,21 @@ void GetVertexInputLayout(std::vector<VkVertexInputBindingDescription2EXT>& bind
     }
     bindings.push_back(binding);
 
+    {
+        binding.binding   = 2U;
+        binding.stride    = sizeof(GfVec2f);
+        binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+        binding.divisor   = 1U;
+    }
+    bindings.push_back(binding);
+
     VkVertexInputAttributeDescription2EXT attribute = { VK_STRUCTURE_TYPE_VERTEX_INPUT_ATTRIBUTE_DESCRIPTION_2_EXT };
 
     // Position
     {
         attribute.binding  = 0U;
         attribute.location = 0U;
-        attribute.offset   = 0U; // offsetof(Vertex, positionOS);
+        attribute.offset   = 0U;
         attribute.format   = VK_FORMAT_R32G32B32_SFLOAT;
     }
     attributes.push_back(attribute);
@@ -311,19 +319,19 @@ void GetVertexInputLayout(std::vector<VkVertexInputBindingDescription2EXT>& bind
     {
         attribute.binding  = 1U;
         attribute.location = 1U;
-        attribute.offset   = 0U; // offsetof(Vertex, normalOS);
+        attribute.offset   = 0U;
         attribute.format   = VK_FORMAT_R32G32B32_SFLOAT;
     }
     attributes.push_back(attribute);
 
-    // // Texcoord
-    // {
-    //     attribute.binding  = 0u;
-    //     attribute.location = 2u;
-    //     attribute.offset   = offsetof(Vertex, texCoord0);
-    //     attribute.format   = VK_FORMAT_R32G32_SFLOAT;
-    // }
-    // attributes.push_back( attribute );
+    // Texcoord
+    {
+        attribute.binding  = 2U;
+        attribute.location = 2U;
+        attribute.offset   = 0;
+        attribute.format   = VK_FORMAT_R32G32_SFLOAT;
+    }
+    attributes.push_back(attribute);
 }
 
 void NameVulkanObject(VkDevice vkLogicalDevice, VkObjectType vkObjectType, uint64_t vkObject, const std::string& vkObjectName)

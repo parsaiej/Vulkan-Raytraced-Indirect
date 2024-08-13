@@ -133,7 +133,7 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
     // Grab a handle to the current frame.
     auto* pFrame = m_Owner->GetRenderSetting(kTokenCurrenFrameParams).UncheckedGet<FrameParams*>();
 
-    auto  ColorAttachmentBarrier = [&](VkCommandBuffer vkCommand,
+    auto ColorAttachmentBarrier = [&](VkCommandBuffer vkCommand,
                                       VkImage vkImage,
                                       VkImageLayout vkLayoutOld,
                                       VkImageLayout vkLayoutNew,
@@ -227,7 +227,7 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
                                                                        VK_SHADER_STAGE_GEOMETRY_BIT,
                                                                        VK_SHADER_STAGE_FRAGMENT_BIT };
 
-    std::array<VkShaderEXT, 5>           vkGraphicsShaders = { m_ShaderMap[ShaderID::MeshVert], VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE, m_ShaderMap[ShaderID::LitFrag] };
+    std::array<VkShaderEXT, 5> vkGraphicsShaders = { m_ShaderMap[ShaderID::MeshVert], VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE, m_ShaderMap[ShaderID::LitFrag] };
 
     vkCmdBindShadersEXT(pFrame->cmd, static_cast<uint32_t>(vkGraphicsShaderStageBits.size()), vkGraphicsShaderStageBits.data(), vkGraphicsShaders.data());
 
@@ -250,17 +250,18 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
         std::pair<VkBuffer, VmaAllocation> positionBuffer;
         std::pair<VkBuffer, VmaAllocation> normalBuffer;
         std::pair<VkBuffer, VmaAllocation> indexBuffer;
-        pResources->GetMeshResources(pMesh->GetResourceHandle(), positionBuffer, normalBuffer, indexBuffer);
+        std::pair<VkBuffer, VmaAllocation> texCoordBuffer;
+        pResources->GetMeshResources(pMesh->GetResourceHandle(), positionBuffer, normalBuffer, indexBuffer, texCoordBuffer);
 
         VmaAllocationInfo allocationInfo;
         vmaGetAllocationInfo(pRenderContext->GetAllocator(), indexBuffer.second, &allocationInfo);
 
         vkCmdBindIndexBuffer(pFrame->cmd, indexBuffer.first, 0U, VK_INDEX_TYPE_UINT32);
 
-        std::array<VkDeviceSize, 2> vertexBufferOffset = { 0U, 0U };
-        std::array<VkBuffer, 2>     vertexBuffers      = { positionBuffer.first, normalBuffer.first };
+        std::array<VkDeviceSize, 3> vertexBufferOffset = { 0U, 0U, 0U };
+        std::array<VkBuffer, 3>     vertexBuffers      = { positionBuffer.first, normalBuffer.first, texCoordBuffer.first };
 
-        vkCmdBindVertexBuffers(pFrame->cmd, 0U, 2U, vertexBuffers.data(), vertexBufferOffset.data());
+        vkCmdBindVertexBuffers(pFrame->cmd, 0U, 3U, vertexBuffers.data(), vertexBufferOffset.data());
 
         m_PushConstants.MatrixM = pMesh->GetLocalToWorld();
         vkCmdPushConstants(pFrame->cmd, m_PipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0U, sizeof(PushConstants), &m_PushConstants);

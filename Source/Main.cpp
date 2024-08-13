@@ -3,7 +3,7 @@
 #include <RenderDelegate.h>
 #include <RenderPass.h>
 
-// #define USE_FREE_CAMERA
+#define USE_FREE_CAMERA
 
 // Hydra 2.0 replaced Scene Delegates with Scene Index concept:
 // https://openusd.org/release/api/_page__hydra__getting__started__guide.html

@@ -5,7 +5,7 @@
 
 void InterleaveImageAlpha(stbi_uc** pImageData, int& width, int& height, int& channels)
 {
-    auto* pAlphaImage = new unsigned char[width * height * 4]; // NOLINT
+    auto* pAlphaImage = new unsigned char[width * height * 4U]; // NOLINT
 
     for (int i = 0; i < width * height; ++i)
     {
@@ -34,15 +34,6 @@ void ImageBarrier(RenderContext*        pRenderContext,
                   VkPipelineStageFlags2 vkStageSrc,
                   VkPipelineStageFlags2 vkStageDst)
 {
-    VkImageSubresourceRange imageSubresource;
-    {
-        imageSubresource.levelCount     = 1U;
-        imageSubresource.layerCount     = 1U;
-        imageSubresource.baseMipLevel   = 0U;
-        imageSubresource.baseArrayLayer = 0U;
-        imageSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-    }
-
     VkImageMemoryBarrier2 vkImageBarrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };
     {
         vkImageBarrier.image               = vkImage;
@@ -54,7 +45,7 @@ void ImageBarrier(RenderContext*        pRenderContext,
         vkImageBarrier.dstStageMask        = vkStageDst;
         vkImageBarrier.srcQueueFamilyIndex = pRenderContext->GetCommandQueueIndex();
         vkImageBarrier.dstQueueFamilyIndex = pRenderContext->GetCommandQueueIndex();
-        vkImageBarrier.subresourceRange    = imageSubresource;
+        vkImageBarrier.subresourceRange    = { VK_IMAGE_ASPECT_COLOR_BIT, 0U, 1U, 0U, 1U };
     }
 
     VkDependencyInfo vkDependencyInfo = { VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
@@ -188,7 +179,8 @@ void ProcessMeshRequest(RenderContext*                       pRenderContext,
                         BufferResource&                      stagingBuffer,
                         BufferResource&                      positionBuffer,
                         BufferResource&                      normalBuffer,
-                        BufferResource&                      indexBuffer)
+                        BufferResource&                      indexBuffer,
+                        BufferResource&                      texCoordBuffer)
 {
     spdlog::info("Processing Mesh Request for {}", meshRequest.id.GetName());
 
@@ -277,6 +269,7 @@ void ProcessMeshRequest(RenderContext*                       pRenderContext,
     indexBuffer    = CreateMeshBuffer(meshRequest.pIndices.data(), sizeof(GfVec3i) * static_cast<uint32_t>(meshRequest.pIndices.size()), VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
     positionBuffer = CreateMeshBuffer(meshRequest.pPoints.data(), sizeof(GfVec3f) * static_cast<uint32_t>(meshRequest.pPoints.size()), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
     normalBuffer   = CreateMeshBuffer(meshRequest.pNormals.data(), sizeof(GfVec3f) * static_cast<uint32_t>(meshRequest.pNormals.size()), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+    texCoordBuffer = CreateMeshBuffer(meshRequest.pTexCoords.data(), sizeof(GfVec2f) * static_cast<uint32_t>(meshRequest.pTexCoords.size()), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
 }
 
 void ResourceRegistry::_Commit()
@@ -307,8 +300,8 @@ void ResourceRegistry::_Commit()
     {
         auto meshRequest = m_PendingMeshRequests.front();
 
-        const uint64_t& i = 3U * meshRequest.first;
-        ProcessMeshRequest(m_RenderContext, meshRequest.second, stagingBuffer, m_BufferResources.at(i + 0U), m_BufferResources.at(i + 1U), m_BufferResources.at(i + 2U));
+        const uint64_t& i = 4U * meshRequest.first;
+        ProcessMeshRequest(m_RenderContext, meshRequest.second, stagingBuffer, m_BufferResources.at(i + 0U), m_BufferResources.at(i + 1U), m_BufferResources.at(i + 2U), m_BufferResources.at(i + 3U));
 
         // Request process, remove.
         m_PendingMeshRequests.pop();
@@ -335,18 +328,19 @@ void ResourceRegistry::_GarbageCollect()
 {
     vkDeviceWaitIdle(m_RenderContext->GetDevice());
 
-    for (uint32_t bufferIndex = 0U; bufferIndex < 3U * m_MeshCounter; bufferIndex++)
+    for (uint32_t bufferIndex = 0U; bufferIndex < 4U * m_MeshCounter; bufferIndex++)
         vmaDestroyBuffer(m_RenderContext->GetAllocator(), m_BufferResources.at(bufferIndex).first, m_BufferResources.at(bufferIndex).second);
 
     for (uint32_t imageIndex = 0U; imageIndex < 1U * m_MaterialCounter; imageIndex++)
         vmaDestroyImage(m_RenderContext->GetAllocator(), m_ImageResources.at(imageIndex).first, m_ImageResources.at(imageIndex).second);
 }
 
-bool ResourceRegistry::GetMeshResources(uint64_t resourceHandle, BufferResource& positionBuffer, BufferResource& normalBuffer, BufferResource& indexBuffer)
+bool ResourceRegistry::GetMeshResources(uint64_t resourceHandle, BufferResource& positionBuffer, BufferResource& normalBuffer, BufferResource& indexBuffer, BufferResource& texCoordBuffer)
 {
-    positionBuffer = m_BufferResources.at(3U * resourceHandle + 0U);
-    normalBuffer   = m_BufferResources.at(3U * resourceHandle + 1U);
-    indexBuffer    = m_BufferResources.at(3U * resourceHandle + 2U);
+    positionBuffer = m_BufferResources.at(4U * resourceHandle + 0U);
+    normalBuffer   = m_BufferResources.at(4U * resourceHandle + 1U);
+    indexBuffer    = m_BufferResources.at(4U * resourceHandle + 2U);
+    texCoordBuffer = m_BufferResources.at(4U * resourceHandle + 3U);
 
     return true;
 }

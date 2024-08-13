@@ -19,6 +19,7 @@ public:
         VtVec3fArray pPoints;
         VtVec3fArray pNormals;
         VtVec3iArray pIndices;
+        VtVec2fArray pTexCoords;
     };
 
     struct MaterialRequest
@@ -43,7 +44,7 @@ public:
         return m_MaterialCounter++;
     }
 
-    bool GetMeshResources(uint64_t resourceHandle, BufferResource& positionBuffer, BufferResource& normalBuffer, BufferResource& indexBuffer);
+    bool GetMeshResources(uint64_t resourceHandle, BufferResource& positionBuffer, BufferResource& normalBuffer, BufferResource& indexBuffer, BufferResource& texCoordBuffer);
     bool GetMaterialResources(uint64_t resourceHandle, ImageResource& albedoImage);
 
     explicit ResourceRegistry(RenderContext* pRenderContext) : m_RenderContext(pRenderContext) {}
