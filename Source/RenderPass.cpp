@@ -21,9 +21,12 @@ RenderPass::RenderPass(HdRenderIndex* pRenderIndex, const HdRprimCollection& col
     // Configure Descriptor Set Layouts
     // --------------------------------------
 
-    Check(CreatePhysicallyBasedMaterialDescriptorLayout(pRenderContext->GetDevice(), m_DescriptorSetLayout),
-          "Failed to create a Vulkan Descriptor Set Layout for Physically Based "
-          "Materials.");
+    // Check(CreatePhysicallyBasedMaterialDescriptorLayout(pRenderContext->GetDevice(), m_DescriptorSetLayout),
+    //       "Failed to create a Vulkan Descriptor Set Layout for Physically Based "
+    //       "Materials.");
+
+    // Obtain the resource registry
+    auto pResourceRegistry = std::static_pointer_cast<ResourceRegistry>(m_Owner->GetResourceRegistry());
 
     // Shader Creation Utility
     // ------------------------------------------------
@@ -63,7 +66,7 @@ RenderPass::RenderPass(HdRenderIndex* pRenderIndex, const HdRprimCollection& col
     VkPipelineLayoutCreateInfo vkPipelineLayoutInfo = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
     {
         vkPipelineLayoutInfo.setLayoutCount         = 1U;
-        vkPipelineLayoutInfo.pSetLayouts            = &m_DescriptorSetLayout;
+        vkPipelineLayoutInfo.pSetLayouts            = pResourceRegistry->GetDescriptorSetLayout();
         vkPipelineLayoutInfo.pushConstantRangeCount = 1U;
         vkPipelineLayoutInfo.pPushConstantRanges    = &vkPushConstants;
     }
@@ -79,8 +82,8 @@ RenderPass::RenderPass(HdRenderIndex* pRenderIndex, const HdRprimCollection& col
 
         vertexShaderInfo.pushConstantRangeCount = 1U;
         vertexShaderInfo.pPushConstantRanges    = &vkPushConstants;
-        vertexShaderInfo.setLayoutCount         = 0U;
-        vertexShaderInfo.pSetLayouts            = nullptr;
+        vertexShaderInfo.setLayoutCount         = 1U;
+        vertexShaderInfo.pSetLayouts            = pResourceRegistry->GetDescriptorSetLayout();
     }
     LoadShader(ShaderID::FullscreenTriangleVert, "FullscreenTriangle.vert.spv", vertexShaderInfo);
     LoadShader(ShaderID::MeshVert, "Mesh.vert.spv", vertexShaderInfo);
@@ -91,6 +94,8 @@ RenderPass::RenderPass(HdRenderIndex* pRenderIndex, const HdRprimCollection& col
 
         litShaderInfo.pushConstantRangeCount = 1U;
         litShaderInfo.pPushConstantRanges    = &vkPushConstants;
+        litShaderInfo.setLayoutCount         = 1U;
+        litShaderInfo.pSetLayouts            = pResourceRegistry->GetDescriptorSetLayout();
     }
     LoadShader(ShaderID::LitFrag, "Lit.frag.spv", litShaderInfo);
 
@@ -119,7 +124,7 @@ RenderPass::~RenderPass()
     vmaDestroyImage(pRenderContext->GetAllocator(), m_DepthAttachment.image, m_DepthAttachment.imageAllocation);
 
     vkDestroyPipelineLayout(pRenderContext->GetDevice(), m_PipelineLayout, nullptr);
-    vkDestroyDescriptorSetLayout(pRenderContext->GetDevice(), m_DescriptorSetLayout, nullptr);
+    // vkDestroyDescriptorSetLayout(pRenderContext->GetDevice(), m_DescriptorSetLayout, nullptr);
 
     for (auto& shader : m_ShaderMap)
         vkDestroyShaderEXT(pRenderContext->GetDevice(), shader.second, nullptr);
@@ -247,19 +252,26 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
 
     for (const auto& pMesh : pScene->GetMeshList())
     {
-        std::pair<VkBuffer, VmaAllocation> positionBuffer;
-        std::pair<VkBuffer, VmaAllocation> normalBuffer;
-        std::pair<VkBuffer, VmaAllocation> indexBuffer;
-        std::pair<VkBuffer, VmaAllocation> texCoordBuffer;
+        // VkBindDescriptorSetsInfoKHR descriptorSets = { VK_STRUCTURE_TYPE_BIND_DESCRIPTOR_SETS_INFO_KHR };
+        // {
+        //     descriptorSets.layout     = m_PipelineLayout;
+        //     descriptorSets.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        // }
+        // vkCmdBindDescriptorSets2KHR(pFrame->cmd, &descriptorSets);
+
+        Buffer positionBuffer;
+        Buffer normalBuffer;
+        Buffer indexBuffer;
+        Buffer texCoordBuffer;
         pResources->GetMeshResources(pMesh->GetResourceHandle(), positionBuffer, normalBuffer, indexBuffer, texCoordBuffer);
 
         VmaAllocationInfo allocationInfo;
-        vmaGetAllocationInfo(pRenderContext->GetAllocator(), indexBuffer.second, &allocationInfo);
+        vmaGetAllocationInfo(pRenderContext->GetAllocator(), indexBuffer.bufferAllocation, &allocationInfo);
 
-        vkCmdBindIndexBuffer(pFrame->cmd, indexBuffer.first, 0U, VK_INDEX_TYPE_UINT32);
+        vkCmdBindIndexBuffer(pFrame->cmd, indexBuffer.buffer, 0U, VK_INDEX_TYPE_UINT32);
 
         std::array<VkDeviceSize, 3> vertexBufferOffset = { 0U, 0U, 0U };
-        std::array<VkBuffer, 3>     vertexBuffers      = { positionBuffer.first, normalBuffer.first, texCoordBuffer.first };
+        std::array<VkBuffer, 3>     vertexBuffers      = { positionBuffer.buffer, normalBuffer.buffer, texCoordBuffer.buffer };
 
         vkCmdBindVertexBuffers(pFrame->cmd, 0U, 3U, vertexBuffers.data(), vertexBufferOffset.data());
 

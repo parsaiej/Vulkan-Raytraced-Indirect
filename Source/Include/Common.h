@@ -77,14 +77,24 @@ struct FrameParams
     double          deltaTime;
 };
 
+// Collection of vulkan primitives to hold a buffer.
+// ---------------------------------------------------------
+
+struct Buffer
+{
+    VkBuffer      buffer           = VK_NULL_HANDLE;
+    VkBufferView  bufferView       = VK_NULL_HANDLE;
+    VmaAllocation bufferAllocation = VK_NULL_HANDLE;
+};
+
 // Collection of vulkan primitives to hold an image.
 // ---------------------------------------------------------
 
 struct Image
 {
-    VkImage       image;
-    VkImageView   imageView;
-    VmaAllocation imageAllocation;
+    VkImage       image           = VK_NULL_HANDLE;
+    VkImageView   imageView       = VK_NULL_HANDLE;
+    VmaAllocation imageAllocation = VK_NULL_HANDLE;
 };
 
 // Utility Functions.

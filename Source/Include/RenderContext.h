@@ -22,13 +22,14 @@ public:
     // each frame.
     void Dispatch(const std::function<void(FrameParams)>& commandsFunc);
 
-    inline VkDevice&      GetDevice() { return m_VKDeviceLogical; }
-    inline VmaAllocator&  GetAllocator() { return m_VKMemoryAllocator; }
-    inline VkQueue&       GetCommandQueue() { return m_VKCommandQueue; }
-    inline uint32_t&      GetCommandQueueIndex() { return m_VKCommandQueueIndex; }
-    inline VkCommandPool& GetCommandPool() { return m_VKCommandPool; }
-    inline GLFWwindow*    GetWindow() { return m_Window; }
-    inline Scene*         GetScene() { return m_Scene.get(); }
+    inline VkDevice&         GetDevice() { return m_VKDeviceLogical; }
+    inline VmaAllocator&     GetAllocator() { return m_VKMemoryAllocator; }
+    inline VkQueue&          GetCommandQueue() { return m_VKCommandQueue; }
+    inline uint32_t&         GetCommandQueueIndex() { return m_VKCommandQueueIndex; }
+    inline VkCommandPool&    GetCommandPool() { return m_VKCommandPool; }
+    inline VkDescriptorPool& GetDescriptorPool() { return m_VKDescriptorPool; }
+    inline GLFWwindow*       GetWindow() { return m_Window; }
+    inline Scene*            GetScene() { return m_Scene.get(); }
 
 private:
 

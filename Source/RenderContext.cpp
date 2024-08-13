@@ -28,8 +28,8 @@ RenderContext::RenderContext(uint32_t width, uint32_t height)
     requiredInstanceLayers.push_back("VK_LAYER_KHRONOS_validation");
 #endif
 
-    uint32_t                 windowExtensionCount = 0U;
-    auto*                    pWindowExtensions    = glfwGetRequiredInstanceExtensions(&windowExtensionCount);
+    uint32_t windowExtensionCount = 0U;
+    auto*    pWindowExtensions    = glfwGetRequiredInstanceExtensions(&windowExtensionCount);
 
     std::vector<const char*> requiredInstanceExtensions;
 
@@ -199,7 +199,7 @@ RenderContext::RenderContext(uint32_t width, uint32_t height)
     {
         vkDescriptorPoolInfo.poolSizeCount = static_cast<uint32_t>(vkDescriptorPoolSizes.size());
         vkDescriptorPoolInfo.pPoolSizes    = vkDescriptorPoolSizes.data();
-        vkDescriptorPoolInfo.maxSets       = 1U;
+        vkDescriptorPoolInfo.maxSets       = 256U;
         vkDescriptorPoolInfo.flags         = 0x0;
     }
     Check(vkCreateDescriptorPool(m_VKDeviceLogical, &vkDescriptorPoolInfo, VK_NULL_HANDLE, &m_VKDescriptorPool), "Failed to create Vulkan Descriptor Pool.");

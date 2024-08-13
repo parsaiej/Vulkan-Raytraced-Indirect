@@ -35,8 +35,8 @@ private:
     std::vector<VkVertexInputBindingDescription2EXT>   m_VertexInputBindings;
     std::vector<VkVertexInputAttributeDescription2EXT> m_VertexInputAttributes;
 
-    VkDescriptorSetLayout m_DescriptorSetLayout = VK_NULL_HANDLE;
-    VkPipelineLayout      m_PipelineLayout      = VK_NULL_HANDLE;
+    //  VkDescriptorSetLayout m_DescriptorSetLayout = VK_NULL_HANDLE;
+    VkPipelineLayout m_PipelineLayout = VK_NULL_HANDLE;
 
     std::unordered_map<ShaderID, VkShaderEXT> m_ShaderMap;
 };
