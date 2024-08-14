@@ -255,13 +255,6 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
     // Update camera matrices.
     m_PushConstants.MatrixVP = GfMatrix4f(renderPassState->GetWorldToViewMatrix()) * GfMatrix4f(renderPassState->GetProjectionMatrix());
 
-    VkBindDescriptorSetsInfoKHR descriptorSetInfo = { VK_STRUCTURE_TYPE_BIND_DESCRIPTOR_SETS_INFO_KHR };
-    {
-        descriptorSetInfo.layout             = m_PipelineLayout;
-        descriptorSetInfo.descriptorSetCount = 1U;
-        descriptorSetInfo.stageFlags         = VK_SHADER_STAGE_FRAGMENT_BIT;
-    }
-
     for (const auto& pMesh : pScene->GetMeshList())
     {
         Buffer positionBuffer;
@@ -280,11 +273,7 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
             VkDescriptorSet materialDescriptorSet = VK_NULL_HANDLE;
             pResources->GetMaterialResources(pMaterial->GetResourceHandle(), materialDescriptorSet);
 
-            {
-                // Bind the descriptor set for the material.
-                descriptorSetInfo.pDescriptorSets = &materialDescriptorSet;
-            }
-            vkCmdBindDescriptorSets2KHR(pFrame->cmd, &descriptorSetInfo);
+            vkCmdBindDescriptorSets(pFrame->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_PipelineLayout, 0U, 1U, &materialDescriptorSet, 0U, nullptr);
         }
 
         VmaAllocationInfo allocationInfo;
