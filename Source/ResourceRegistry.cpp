@@ -57,7 +57,10 @@ void ImageBarrier(RenderContext*        pRenderContext,
     vkCmdPipelineBarrier2(vkCommand, &vkDependencyInfo);
 };
 
-void ProcessMaterialRequest(RenderContext* pRenderContext, const ResourceRegistry::MaterialRequest& materialRequest, Buffer& stagingBuffer, Image& albedoImage)
+void ProcessMaterialRequest(RenderContext*                           pRenderContext,
+                            const ResourceRegistry::MaterialRequest& materialRequest,
+                            Buffer&                                  stagingBuffer,
+                            Image&                                   albedoImage)
 {
     spdlog::info("Processing Material Request for {}", materialRequest.id.GetName());
 
@@ -76,7 +79,8 @@ void ProcessMaterialRequest(RenderContext* pRenderContext, const ResourceRegistr
     // -----------------------------------------------------
 
     void* pMappedStagingMemory = nullptr;
-    Check(vmaMapMemory(pRenderContext->GetAllocator(), stagingBuffer.bufferAllocation, &pMappedStagingMemory), "Failed to map a pointer to staging memory.");
+    Check(vmaMapMemory(pRenderContext->GetAllocator(), stagingBuffer.bufferAllocation, &pMappedStagingMemory),
+          "Failed to map a pointer to staging memory.");
     {
         // Copy from Host -> Staging memory.
         memcpy(pMappedStagingMemory, pImageData, channels * width * height); // NOLINT
@@ -103,7 +107,8 @@ void ProcessMaterialRequest(RenderContext* pRenderContext, const ResourceRegistr
     VmaAllocationCreateInfo allocInfo = {};
     allocInfo.usage                   = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
 
-    Check(vmaCreateImage(pRenderContext->GetAllocator(), &imageInfo, &allocInfo, &albedoImage.image, &albedoImage.imageAllocation, nullptr), "Failed to create dedicated image memory.");
+    Check(vmaCreateImage(pRenderContext->GetAllocator(), &imageInfo, &allocInfo, &albedoImage.image, &albedoImage.imageAllocation, nullptr),
+          "Failed to create dedicated image memory.");
 
     // Create Image View.
     // -----------------------------------------------------
@@ -178,7 +183,8 @@ void ProcessMaterialRequest(RenderContext* pRenderContext, const ResourceRegistr
         vkSubmitInfo.commandBufferCount = 1U;
         vkSubmitInfo.pCommandBuffers    = &vkCommand;
     }
-    Check(vkQueueSubmit(pRenderContext->GetCommandQueue(), 1U, &vkSubmitInfo, VK_NULL_HANDLE), "Failed to submit copy commands to the graphics queue.");
+    Check(vkQueueSubmit(pRenderContext->GetCommandQueue(), 1U, &vkSubmitInfo, VK_NULL_HANDLE),
+          "Failed to submit copy commands to the graphics queue.");
 
     // Wait for the copy to complete.
     // -----------------------------------------------------
@@ -209,20 +215,27 @@ void ProcessMeshRequest(RenderContext*                       pRenderContext,
         allocInfo.usage                   = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
 
         Buffer meshBuffer {};
-        Check(vmaCreateBuffer(pRenderContext->GetAllocator(), &bufferInfo, &allocInfo, &meshBuffer.buffer, &meshBuffer.bufferAllocation, nullptr), "Failed to create dedicated buffer memory.");
+        Check(vmaCreateBuffer(pRenderContext->GetAllocator(), &bufferInfo, &allocInfo, &meshBuffer.buffer, &meshBuffer.bufferAllocation, nullptr),
+              "Failed to create dedicated buffer memory.");
 
 #ifdef _DEBUG
         // Label the allocation.
-        vmaSetAllocationName(pRenderContext->GetAllocator(), meshBuffer.bufferAllocation, std::format("Index Buffer Alloc - [{}]", meshRequest.id.GetName()).c_str());
+        vmaSetAllocationName(pRenderContext->GetAllocator(),
+                             meshBuffer.bufferAllocation,
+                             std::format("Index Buffer Alloc - [{}]", meshRequest.id.GetName()).c_str());
 
         // Label the buffer object.
-        NameVulkanObject(pRenderContext->GetDevice(), VK_OBJECT_TYPE_BUFFER, reinterpret_cast<uint64_t>(meshBuffer.buffer), std::format("Vertex Buffer - [{}]", meshRequest.id.GetName()));
+        NameVulkanObject(pRenderContext->GetDevice(),
+                         VK_OBJECT_TYPE_BUFFER,
+                         reinterpret_cast<uint64_t>(meshBuffer.buffer),
+                         std::format("Vertex Buffer - [{}]", meshRequest.id.GetName()));
 #endif
         // Copy Host -> Staging Memory.
         // -----------------------------------------------------
 
         void* pMappedData = nullptr;
-        Check(vmaMapMemory(pRenderContext->GetAllocator(), stagingBuffer.bufferAllocation, &pMappedData), "Failed to map a pointer to staging memory.");
+        Check(vmaMapMemory(pRenderContext->GetAllocator(), stagingBuffer.bufferAllocation, &pMappedData),
+              "Failed to map a pointer to staging memory.");
         {
             // Copy from Host -> Staging memory.
             memcpy(pMappedData, pData, dataSize);
@@ -268,7 +281,8 @@ void ProcessMeshRequest(RenderContext*                       pRenderContext,
             vkSubmitInfo.commandBufferCount = 1U;
             vkSubmitInfo.pCommandBuffers    = &vkCommand;
         }
-        Check(vkQueueSubmit(pRenderContext->GetCommandQueue(), 1U, &vkSubmitInfo, VK_NULL_HANDLE), "Failed to submit copy commands to the graphics queue.");
+        Check(vkQueueSubmit(pRenderContext->GetCommandQueue(), 1U, &vkSubmitInfo, VK_NULL_HANDLE),
+              "Failed to submit copy commands to the graphics queue.");
 
         // Wait for the copy to complete.
         // -----------------------------------------------------
@@ -278,13 +292,24 @@ void ProcessMeshRequest(RenderContext*                       pRenderContext,
         return meshBuffer;
     };
 
-    indexBuffer    = CreateMeshBuffer(meshRequest.pIndices.data(), sizeof(GfVec3i) * static_cast<uint32_t>(meshRequest.pIndices.size()), VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
-    positionBuffer = CreateMeshBuffer(meshRequest.pPoints.data(), sizeof(GfVec3f) * static_cast<uint32_t>(meshRequest.pPoints.size()), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-    normalBuffer   = CreateMeshBuffer(meshRequest.pNormals.data(), sizeof(GfVec3f) * static_cast<uint32_t>(meshRequest.pNormals.size()), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-    texCoordBuffer = CreateMeshBuffer(meshRequest.pTexCoords.data(), sizeof(GfVec2f) * static_cast<uint32_t>(meshRequest.pTexCoords.size()), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+    indexBuffer    = CreateMeshBuffer(meshRequest.pIndices.data(),
+                                   sizeof(GfVec3i) * static_cast<uint32_t>(meshRequest.pIndices.size()),
+                                   VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+    positionBuffer = CreateMeshBuffer(meshRequest.pPoints.data(),
+                                      sizeof(GfVec3f) * static_cast<uint32_t>(meshRequest.pPoints.size()),
+                                      VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+    normalBuffer   = CreateMeshBuffer(meshRequest.pNormals.data(),
+                                    sizeof(GfVec3f) * static_cast<uint32_t>(meshRequest.pNormals.size()),
+                                    VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+    texCoordBuffer = CreateMeshBuffer(meshRequest.pTexCoords.data(),
+                                      sizeof(GfVec2f) * static_cast<uint32_t>(meshRequest.pTexCoords.size()),
+                                      VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
 }
 
-void ResourceRegistry::SyncDescriptorSets(RenderContext* pRenderContext, const std::array<Image, kMaxImageResources>& imageResources, std::vector<VkDescriptorSet>& descriptorSets)
+/*
+void ResourceRegistry::SyncDescriptorSets(RenderContext*                               pRenderContext,
+                                          const std::array<Image, kMaxImageResources>& imageResources,
+                                          std::vector<VkDescriptorSet>&                descriptorSets)
 {
     // First nuke the descriptor pool.
     vkResetDescriptorPool(pRenderContext->GetDevice(), pRenderContext->GetDescriptorPool(), 0x0);
@@ -297,11 +322,13 @@ void ResourceRegistry::SyncDescriptorSets(RenderContext* pRenderContext, const s
 
     VkDescriptorSetAllocateInfo descriptorSetAllocationInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
     {
-        descriptorSetAllocationInfo.descriptorPool     = pRenderContext->GetDescriptorPool();
-        descriptorSetAllocationInfo.descriptorSetCount = static_cast<uint32_t>(imageResources.size()); // WARNING: This is temporary while 1 image = 1 set.
-        descriptorSetAllocationInfo.pSetLayouts        = descriptorSetLayout.data();
+        descriptorSetAllocationInfo.descriptorPool = pRenderContext->GetDescriptorPool();
+        descriptorSetAllocationInfo.descriptorSetCount =
+            static_cast<uint32_t>(imageResources.size()); // WARNING: This is temporary while 1 image = 1 set.
+        descriptorSetAllocationInfo.pSetLayouts = descriptorSetLayout.data();
     }
-    Check(vkAllocateDescriptorSets(pRenderContext->GetDevice(), &descriptorSetAllocationInfo, descriptorSets.data()), "Failed to allocate material descriptors.");
+    Check(vkAllocateDescriptorSets(pRenderContext->GetDevice(), &descriptorSetAllocationInfo, descriptorSets.data()),
+          "Failed to allocate material descriptors.");
 
     // Update the descriptor sets.
     std::vector<VkWriteDescriptorSet> descriptorSetWrites;
@@ -328,6 +355,7 @@ void ResourceRegistry::SyncDescriptorSets(RenderContext* pRenderContext, const s
 
     vkUpdateDescriptorSets(pRenderContext->GetDevice(), static_cast<uint32_t>(descriptorSetWrites.size()), descriptorSetWrites.data(), 0U, nullptr);
 }
+*/
 
 void ResourceRegistry::_Commit()
 {
@@ -347,7 +375,13 @@ void ResourceRegistry::_Commit()
         allocInfo.usage                   = VMA_MEMORY_USAGE_AUTO;
         allocInfo.flags                   = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
 
-        Check(vmaCreateBuffer(m_RenderContext->GetAllocator(), &bufferInfo, &allocInfo, &stagingBuffer.buffer, &stagingBuffer.bufferAllocation, nullptr), "Failed to create staging buffer memory.");
+        Check(vmaCreateBuffer(m_RenderContext->GetAllocator(),
+                              &bufferInfo,
+                              &allocInfo,
+                              &stagingBuffer.buffer,
+                              &stagingBuffer.bufferAllocation,
+                              nullptr),
+              "Failed to create staging buffer memory.");
     }
 
     // Commit Mesh Requests
@@ -358,7 +392,14 @@ void ResourceRegistry::_Commit()
         auto meshRequest = m_PendingMeshRequests.front();
 
         const uint64_t& i = 4U * meshRequest.first;
-        ProcessMeshRequest(m_RenderContext, meshRequest.second, stagingBuffer, m_BufferResources.at(i + 0U), m_BufferResources.at(i + 1U), m_BufferResources.at(i + 2U), m_BufferResources.at(i + 3U));
+
+        ProcessMeshRequest(m_RenderContext,
+                           meshRequest.second,
+                           stagingBuffer,
+                           m_BufferResources.at(i + 0U),
+                           m_BufferResources.at(i + 1U),
+                           m_BufferResources.at(i + 2U),
+                           m_BufferResources.at(i + 3U));
 
         // Request process, remove.
         m_PendingMeshRequests.pop();
@@ -379,15 +420,6 @@ void ResourceRegistry::_Commit()
 
     // Release staging memory.
     vmaDestroyBuffer(m_RenderContext->GetAllocator(), stagingBuffer.buffer, stagingBuffer.bufferAllocation);
-
-    // Configure Descriptor Set Layouts
-    // --------------------------------------
-
-    Check(CreatePhysicallyBasedMaterialDescriptorLayout(m_RenderContext->GetDevice(), m_DescriptorSetLayout),
-          "Failed to create a Vulkan Descriptor Set Layout for Physically Based "
-          "Materials.");
-
-    SyncDescriptorSets(m_RenderContext, m_ImageResources, m_DescriptorSets);
 }
 
 void ResourceRegistry::_GarbageCollect()
@@ -395,7 +427,14 @@ void ResourceRegistry::_GarbageCollect()
     vkDeviceWaitIdle(m_RenderContext->GetDevice());
 
     for (uint32_t bufferIndex = 0U; bufferIndex < 4U * m_MeshCounter; bufferIndex++)
-        vmaDestroyBuffer(m_RenderContext->GetAllocator(), m_BufferResources.at(bufferIndex).buffer, m_BufferResources.at(bufferIndex).bufferAllocation);
+    {
+        if (m_BufferResources.at(bufferIndex).bufferView != VK_NULL_HANDLE)
+            vkDestroyBufferView(m_RenderContext->GetDevice(), m_BufferResources.at(bufferIndex).bufferView, nullptr);
+
+        vmaDestroyBuffer(m_RenderContext->GetAllocator(),
+                         m_BufferResources.at(bufferIndex).buffer,
+                         m_BufferResources.at(bufferIndex).bufferAllocation);
+    }
 
     for (uint32_t imageIndex = 0U; imageIndex < 1U * m_MaterialCounter; imageIndex++)
     {
@@ -404,11 +443,13 @@ void ResourceRegistry::_GarbageCollect()
 
         vmaDestroyImage(m_RenderContext->GetAllocator(), m_ImageResources.at(imageIndex).image, m_ImageResources.at(imageIndex).imageAllocation);
     }
-
-    vkDestroyDescriptorSetLayout(m_RenderContext->GetDevice(), m_DescriptorSetLayout, nullptr);
 }
 
-bool ResourceRegistry::GetMeshResources(uint64_t resourceHandle, Buffer& positionBuffer, Buffer& normalBuffer, Buffer& indexBuffer, Buffer& texCoordBuffer)
+bool ResourceRegistry::GetMeshResources(uint64_t resourceHandle,
+                                        Buffer&  positionBuffer,
+                                        Buffer&  normalBuffer,
+                                        Buffer&  indexBuffer,
+                                        Buffer&  texCoordBuffer)
 {
     positionBuffer = m_BufferResources.at(4U * resourceHandle + 0U);
     normalBuffer   = m_BufferResources.at(4U * resourceHandle + 1U);
@@ -418,4 +459,69 @@ bool ResourceRegistry::GetMeshResources(uint64_t resourceHandle, Buffer& positio
     return true;
 }
 
-bool ResourceRegistry::GetMaterialResources(uint64_t resourceHandle, Image& albedoImage) { return false; }
+bool ResourceRegistry::GetMaterialResources(uint64_t resourceHandle, VkDescriptorSet& descriptorSet)
+{
+    if (resourceHandle > m_DescriptorSets.size())
+        return false;
+
+    descriptorSet = m_DescriptorSets[resourceHandle];
+
+    return descriptorSet != VK_NULL_HANDLE;
+}
+
+static bool s_BuiltDescriptors = false;
+
+void ResourceRegistry::TryRebuildMaterialDescriptors(RenderContext* pRenderContext, VkDescriptorSetLayout vkDescriptorSetLayout)
+{
+    if (s_BuiltDescriptors)
+        return;
+
+    // First nuke the descriptor pool.
+    vkResetDescriptorPool(pRenderContext->GetDevice(), pRenderContext->GetDescriptorPool(), 0x0);
+
+    // Clear the sets.
+    m_DescriptorSets.resize(m_ImageResources.size());
+
+    // Due to Vulkan API design need to fill a list of the same set layout for each set.
+    std::vector<VkDescriptorSetLayout> descriptorSetLayout(m_ImageResources.size(), vkDescriptorSetLayout);
+
+    VkDescriptorSetAllocateInfo descriptorSetAllocationInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
+    {
+        descriptorSetAllocationInfo.descriptorPool = pRenderContext->GetDescriptorPool();
+        descriptorSetAllocationInfo.descriptorSetCount =
+            static_cast<uint32_t>(m_ImageResources.size()); // WARNING: This is temporary while 1 image = 1 set.
+        descriptorSetAllocationInfo.pSetLayouts = descriptorSetLayout.data();
+    }
+    Check(vkAllocateDescriptorSets(pRenderContext->GetDevice(), &descriptorSetAllocationInfo, m_DescriptorSets.data()),
+          "Failed to allocate material descriptors.");
+
+    // Update the descriptor sets.
+    std::vector<VkWriteDescriptorSet> descriptorSetWrites;
+
+    for (uint32_t imageIndex = 0U; imageIndex < m_ImageResources.size(); imageIndex++)
+    {
+        if (m_ImageResources.at(imageIndex).imageView == VK_NULL_HANDLE)
+            continue;
+
+        VkDescriptorImageInfo descriptorImageInfo;
+        {
+            descriptorImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            descriptorImageInfo.imageView   = m_ImageResources.at(imageIndex).imageView;
+            descriptorImageInfo.sampler     = VK_NULL_HANDLE;
+        }
+
+        VkWriteDescriptorSet writeInfo = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+        {
+            writeInfo.descriptorType  = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+            writeInfo.descriptorCount = 1U;
+            writeInfo.dstBinding      = 0U;
+            writeInfo.dstSet          = m_DescriptorSets.at(imageIndex);
+            writeInfo.pImageInfo      = &descriptorImageInfo;
+        }
+        descriptorSetWrites.push_back(writeInfo);
+    }
+
+    vkUpdateDescriptorSets(pRenderContext->GetDevice(), static_cast<uint32_t>(descriptorSetWrites.size()), descriptorSetWrites.data(), 0U, nullptr);
+
+    s_BuiltDescriptors = true;
+}

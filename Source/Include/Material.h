@@ -17,8 +17,9 @@ public:
 
     void Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParam, HdDirtyBits* pDirtyBits) override;
 
-    [[nodiscard]]
-    HdDirtyBits GetInitialDirtyBitsMask() const override;
+    inline const uint64_t& GetResourceHandle() const { return m_ResourceHandle; }
+
+    [[nodiscard]] HdDirtyBits GetInitialDirtyBitsMask() const override;
 
 private:
 

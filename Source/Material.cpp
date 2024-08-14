@@ -2,6 +2,8 @@
 #include <Material.h>
 #include <RenderDelegate.h>
 #include <ResourceRegistry.h>
+#include <RenderContext.h>
+#include <Scene.h>
 
 #include <MaterialXCore/Document.h>
 #include <MaterialXFormat/XmlIo.h>
@@ -135,12 +137,16 @@ void Material::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParam
     // Obtain the resource registry + push the material request.
     auto pResourceRegistry = std::static_pointer_cast<ResourceRegistry>(pSceneDelegate->GetRenderIndex().GetResourceRegistry());
     {
-        m_ResourceHandle = pResourceRegistry->PushMaterialRequest({ id,
-                                                                    TryGetSingleParameterForInput<SdfAssetPath>(kMaterialInputBaseColor, &network, &rootNode->second),
-                                                                    TryGetSingleParameterForInput<SdfAssetPath>(kMaterialInputNormal, &network, &rootNode->second),
-                                                                    TryGetSingleParameterForInput<SdfAssetPath>(kMaterialInputRoughness, &network, &rootNode->second),
-                                                                    TryGetSingleParameterForInput<SdfAssetPath>(kMaterialInputMetallic, &network, &rootNode->second) });
+        m_ResourceHandle = pResourceRegistry->PushMaterialRequest(
+            { id,
+              TryGetSingleParameterForInput<SdfAssetPath>(kMaterialInputBaseColor, &network, &rootNode->second),
+              TryGetSingleParameterForInput<SdfAssetPath>(kMaterialInputNormal, &network, &rootNode->second),
+              TryGetSingleParameterForInput<SdfAssetPath>(kMaterialInputRoughness, &network, &rootNode->second),
+              TryGetSingleParameterForInput<SdfAssetPath>(kMaterialInputMetallic, &network, &rootNode->second) });
     }
+
+    // Push material to the scene.
+    m_Owner->GetRenderContext()->GetScene()->AddMaterial(this);
 
     // Clear the dirty bits.
     *pDirtyBits &= ~HdChangeTracker::AllSceneDirtyBits;

@@ -57,13 +57,15 @@ RenderContext::RenderContext(uint32_t width, uint32_t height)
         requiredDeviceExtensions.push_back(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
         requiredDeviceExtensions.push_back(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME);
         requiredDeviceExtensions.push_back(VK_EXT_SHADER_OBJECT_EXTENSION_NAME);
+        requiredDeviceExtensions.push_back(VK_KHR_MAINTENANCE_6_EXTENSION_NAME);
     }
 
     Check(SelectVulkanPhysicalDevice(m_VKInstance, requiredDeviceExtensions, m_VKDevicePhysical), "Failed to select a Vulkan Physical Device.");
     Check(GetVulkanQueueIndices(m_VKInstance, m_VKDevicePhysical, m_VKCommandQueueIndex),
           "Failed to obtain the required Vulkan Queue Indices from the physical "
           "device.");
-    Check(CreateVulkanLogicalDevice(m_VKDevicePhysical, requiredDeviceExtensions, m_VKCommandQueueIndex, m_VKDeviceLogical), "Failed to create a Vulkan Logical Device");
+    Check(CreateVulkanLogicalDevice(m_VKDevicePhysical, requiredDeviceExtensions, m_VKCommandQueueIndex, m_VKDeviceLogical),
+          "Failed to create a Vulkan Logical Device");
 
     volkLoadDevice(m_VKDeviceLogical);
 
@@ -76,7 +78,8 @@ RenderContext::RenderContext(uint32_t width, uint32_t height)
     Check(glfwCreateWindowSurface(m_VKInstance, m_Window, nullptr, &m_VKSurface), "Failed to create the Vulkan Surface.");
 
     VkSurfaceCapabilitiesKHR vkSurfaceProperties;
-    Check(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(m_VKDevicePhysical, m_VKSurface, &vkSurfaceProperties), "Failed to obect the Vulkan Surface Properties");
+    Check(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(m_VKDevicePhysical, m_VKSurface, &vkSurfaceProperties),
+          "Failed to obect the Vulkan Surface Properties");
 
     VkSwapchainCreateInfoKHR vkSwapchainCreateInfo = { VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR };
     vkSwapchainCreateInfo.surface                  = m_VKSurface;
@@ -95,12 +98,14 @@ RenderContext::RenderContext(uint32_t width, uint32_t height)
     Check(vkCreateSwapchainKHR(m_VKDeviceLogical, &vkSwapchainCreateInfo, nullptr, &m_VKSwapchain), "Failed to create the Vulkan Swapchain");
 
     uint32_t vkSwapchainImageCount = 0U;
-    Check(vkGetSwapchainImagesKHR(m_VKDeviceLogical, m_VKSwapchain, &vkSwapchainImageCount, nullptr), "Failed to obtain Vulkan Swapchain image count.");
+    Check(vkGetSwapchainImagesKHR(m_VKDeviceLogical, m_VKSwapchain, &vkSwapchainImageCount, nullptr),
+          "Failed to obtain Vulkan Swapchain image count.");
 
     m_VKSwapchainImages.resize(vkSwapchainImageCount);
     m_VKSwapchainImageViews.resize(vkSwapchainImageCount);
 
-    Check(vkGetSwapchainImagesKHR(m_VKDeviceLogical, m_VKSwapchain, &vkSwapchainImageCount, m_VKSwapchainImages.data()), "Failed to obtain the Vulkan Swapchain images.");
+    Check(vkGetSwapchainImagesKHR(m_VKDeviceLogical, m_VKSwapchain, &vkSwapchainImageCount, m_VKSwapchainImages.data()),
+          "Failed to obtain the Vulkan Swapchain images.");
 
 #ifdef _DEBUG
     for (uint32_t swapChainIndex = 0U; swapChainIndex < vkSwapchainImageCount; swapChainIndex++)
@@ -156,14 +161,17 @@ RenderContext::RenderContext(uint32_t width, uint32_t height)
             vkCommandBufferInfo.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
         }
 
-        Check(vkAllocateCommandBuffers(m_VKDeviceLogical, &vkCommandBufferInfo, &m_VKCommandBuffers.at(frameIndex)), "Failed to allocate Vulkan Command Buffers.");
+        Check(vkAllocateCommandBuffers(m_VKDeviceLogical, &vkCommandBufferInfo, &m_VKCommandBuffers.at(frameIndex)),
+              "Failed to allocate Vulkan Command Buffers.");
 
         VkSemaphoreCreateInfo vkSemaphoreInfo = { VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, nullptr, 0x0 };
         VkFenceCreateInfo     vkFenceInfo     = { VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, nullptr, VK_FENCE_CREATE_SIGNALED_BIT };
 
         // Synchronization Primitives
-        Check(vkCreateSemaphore(m_VKDeviceLogical, &vkSemaphoreInfo, nullptr, &m_VKImageAvailableSemaphores.at(frameIndex)), "Failed to create Vulkan Semaphore.");
-        Check(vkCreateSemaphore(m_VKDeviceLogical, &vkSemaphoreInfo, nullptr, &m_VKRenderCompleteSemaphores.at(frameIndex)), "Failed to create Vulkan Semaphore.");
+        Check(vkCreateSemaphore(m_VKDeviceLogical, &vkSemaphoreInfo, nullptr, &m_VKImageAvailableSemaphores.at(frameIndex)),
+              "Failed to create Vulkan Semaphore.");
+        Check(vkCreateSemaphore(m_VKDeviceLogical, &vkSemaphoreInfo, nullptr, &m_VKRenderCompleteSemaphores.at(frameIndex)),
+              "Failed to create Vulkan Semaphore.");
         Check(vkCreateFence(m_VKDeviceLogical, &vkFenceInfo, nullptr, &m_VKInFlightFences.at(frameIndex)), "Failed to create Vulkan Fence.");
     }
 
@@ -192,17 +200,18 @@ RenderContext::RenderContext(uint32_t width, uint32_t height)
     // ------------------------------------------------
 
     std::array<VkDescriptorPoolSize, 2> vkDescriptorPoolSizes = {
-        { { VK_DESCRIPTOR_TYPE_SAMPLER, 1U }, { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 128U } }
+        { { VK_DESCRIPTOR_TYPE_SAMPLER, 1U }, { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 2048U } }
     };
 
     VkDescriptorPoolCreateInfo vkDescriptorPoolInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
     {
         vkDescriptorPoolInfo.poolSizeCount = static_cast<uint32_t>(vkDescriptorPoolSizes.size());
         vkDescriptorPoolInfo.pPoolSizes    = vkDescriptorPoolSizes.data();
-        vkDescriptorPoolInfo.maxSets       = 256U;
+        vkDescriptorPoolInfo.maxSets       = 2048U;
         vkDescriptorPoolInfo.flags         = 0x0;
     }
-    Check(vkCreateDescriptorPool(m_VKDeviceLogical, &vkDescriptorPoolInfo, VK_NULL_HANDLE, &m_VKDescriptorPool), "Failed to create Vulkan Descriptor Pool.");
+    Check(vkCreateDescriptorPool(m_VKDeviceLogical, &vkDescriptorPoolInfo, VK_NULL_HANDLE, &m_VKDescriptorPool),
+          "Failed to create Vulkan Descriptor Pool.");
 
     m_Scene = std::make_unique<Scene>();
 
@@ -256,11 +265,17 @@ void RenderContext::Dispatch(const std::function<void(FrameParams)>& commandsFun
         uint32_t frameInFlightIndex = frameIndex % kMaxFramesInFlight;
 
         // Wait for the current frame fence to be signaled.
-        Check(vkWaitForFences(m_VKDeviceLogical, 1U, &m_VKInFlightFences.at(frameInFlightIndex), VK_TRUE, UINT64_MAX), "Failed to wait for frame fence");
+        Check(vkWaitForFences(m_VKDeviceLogical, 1U, &m_VKInFlightFences.at(frameInFlightIndex), VK_TRUE, UINT64_MAX),
+              "Failed to wait for frame fence");
 
         // Acquire the next swap chain image available.
         uint32_t vkCurrentSwapchainImageIndex = 0U;
-        Check(vkAcquireNextImageKHR(m_VKDeviceLogical, m_VKSwapchain, UINT64_MAX, m_VKImageAvailableSemaphores.at(frameInFlightIndex), VK_NULL_HANDLE, &vkCurrentSwapchainImageIndex),
+        Check(vkAcquireNextImageKHR(m_VKDeviceLogical,
+                                    m_VKSwapchain,
+                                    UINT64_MAX,
+                                    m_VKImageAvailableSemaphores.at(frameInFlightIndex),
+                                    VK_NULL_HANDLE,
+                                    &vkCurrentSwapchainImageIndex),
               "Failed to acquire swapchain image.");
 
         // Get the current frame's command buffer.
@@ -277,7 +292,10 @@ void RenderContext::Dispatch(const std::function<void(FrameParams)>& commandsFun
         Check(vkBeginCommandBuffer(vkCurrentCommandBuffer, &vkCommandBufferBeginInfo), "Failed to open frame command buffer for recording");
 
         // Dispatch command recording.
-        FrameParams frameParams = { vkCurrentCommandBuffer, m_VKSwapchainImages[vkCurrentSwapchainImageIndex], m_VKSwapchainImageViews[vkCurrentSwapchainImageIndex], deltaTime.count() };
+        FrameParams frameParams = { vkCurrentCommandBuffer,
+                                    m_VKSwapchainImages[vkCurrentSwapchainImageIndex],
+                                    m_VKSwapchainImageViews[vkCurrentSwapchainImageIndex],
+                                    deltaTime.count() };
 
         commandsFunc(frameParams);
 
@@ -299,7 +317,8 @@ void RenderContext::Dispatch(const std::function<void(FrameParams)>& commandsFun
             vkQueueSubmitInfo.pSignalSemaphores    = &m_VKRenderCompleteSemaphores.at(frameInFlightIndex);
             vkQueueSubmitInfo.pWaitDstStageMask    = &vkWaitStageMask;
         }
-        Check(vkQueueSubmit(m_VKCommandQueue, 1U, &vkQueueSubmitInfo, m_VKInFlightFences.at(frameInFlightIndex)), "Failed to submit commands to the Vulkan Graphics Queue.");
+        Check(vkQueueSubmit(m_VKCommandQueue, 1U, &vkQueueSubmitInfo, m_VKInFlightFences.at(frameInFlightIndex)),
+              "Failed to submit commands to the Vulkan Graphics Queue.");
 
         VkPresentInfoKHR vkQueuePresentInfo = { VK_STRUCTURE_TYPE_PRESENT_INFO_KHR };
         {

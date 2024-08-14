@@ -56,6 +56,7 @@ add_executable(${PROJECT_NAME}
     Source/Mesh.cpp
     Source/Common.cpp
     Source/Material.cpp
+    Source/Scene.cpp
 )
 
 target_precompile_headers(${PROJECT_NAME} PRIVATE Source/Include/Precompiled.h)

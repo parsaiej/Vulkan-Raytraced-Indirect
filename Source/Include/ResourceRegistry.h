@@ -44,9 +44,9 @@ public:
     }
 
     bool GetMeshResources(uint64_t resourceHandle, Buffer& positionBuffer, Buffer& normalBuffer, Buffer& indexBuffer, Buffer& texCoordBuffer);
-    bool GetMaterialResources(uint64_t resourceHandle, Image& albedoImage);
+    bool GetMaterialResources(uint64_t resourceHandle, VkDescriptorSet& descriptorSet);
 
-    inline VkDescriptorSetLayout* GetDescriptorSetLayout() { return &m_DescriptorSetLayout; }
+    void TryRebuildMaterialDescriptors(RenderContext* pRenderContext, VkDescriptorSetLayout vkDescriptorSetLayout);
 
     explicit ResourceRegistry(RenderContext* pRenderContext) : m_RenderContext(pRenderContext) {}
 
@@ -60,7 +60,9 @@ private:
     const static uint32_t kMaxBufferResources = 512U;
     const static uint32_t kMaxImageResources  = 512U;
 
-    void SyncDescriptorSets(RenderContext* pRenderContext, const std::array<Image, kMaxImageResources>& imageResources, std::vector<VkDescriptorSet>& descriptorSets);
+    void SyncDescriptorSets(RenderContext*                               pRenderContext,
+                            const std::array<Image, kMaxImageResources>& imageResources,
+                            std::vector<VkDescriptorSet>&                descriptorSets);
 
     RenderContext* m_RenderContext;
 
@@ -76,8 +78,6 @@ private:
 
     uint64_t m_MeshCounter {};
     uint64_t m_MaterialCounter {};
-
-    VkDescriptorSetLayout m_DescriptorSetLayout = VK_NULL_HANDLE;
 };
 
 #endif
