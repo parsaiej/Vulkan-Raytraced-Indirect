@@ -215,13 +215,11 @@ void ResourceRegistry::ProcessMeshRequest(RenderContext*                       p
                                         sizeof(GfVec2f) * static_cast<uint32_t>(meshRequest.pTexCoords.size()),
                                         VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
 
-    /*
     // Label the resources.
-    DebugLabelBufferResource(pRenderContext, indexBuffer, std::format("{} - Index", meshRequest.id.GetText()).c_str());
-    DebugLabelBufferResource(pRenderContext, positionBuffer, std::format("{} - Position", meshRequest.id.GetText()).c_str());
-    DebugLabelBufferResource(pRenderContext, normalBuffer, std::format("{} - Normal", meshRequest.id.GetText()).c_str());
-    DebugLabelBufferResource(pRenderContext, texCoordBuffer, std::format("{} - Texcoord", meshRequest.id.GetText()).c_str());
-    */
+    DebugLabelBufferResource(pRenderContext, pMesh->indices, std::format("{} - Index", meshRequest.id.GetText()).c_str());
+    DebugLabelBufferResource(pRenderContext, pMesh->positions, std::format("{} - Position", meshRequest.id.GetText()).c_str());
+    DebugLabelBufferResource(pRenderContext, pMesh->normals, std::format("{} - Normal", meshRequest.id.GetText()).c_str());
+    DebugLabelBufferResource(pRenderContext, pMesh->texCoords, std::format("{} - Texcoord", meshRequest.id.GetText()).c_str());
 }
 
 void ResourceRegistry::_Commit()
