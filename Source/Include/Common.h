@@ -10,7 +10,7 @@ inline void Check(VkResult a, const char* b)
 {
     if (a != VK_SUCCESS)
     {
-        spdlog::critical(b);
+        spdlog::critical(std::format("{} - [VkResult: {}]", b, std::to_string(a)));
         __debugbreak();
         exit(a);
     }
@@ -31,7 +31,7 @@ inline void Check(VkResult a, const char* b)
 {
     if (a != VK_SUCCESS)
     {
-        spdlog::critical(b);
+        spdlog::critical(std::format("{} - [VkResult: {}]", b, std::to_string(a)));
         exit(a);
     }
 }
@@ -106,7 +106,10 @@ bool CreatePhysicallyBasedMaterialDescriptorLayout(const VkDevice& vkLogicalDevi
 
 bool SelectVulkanPhysicalDevice(const VkInstance& vkInstance, const std::vector<const char*>& requiredExtensions, VkPhysicalDevice& vkPhysicalDevice);
 
-bool CreateVulkanLogicalDevice(const VkPhysicalDevice& vkPhysicalDevice, const std::vector<const char*>& requiredExtensions, uint32_t vkGraphicsQueueIndex, VkDevice& vkLogicalDevice);
+bool CreateVulkanLogicalDevice(const VkPhysicalDevice&         vkPhysicalDevice,
+                               const std::vector<const char*>& requiredExtensions,
+                               uint32_t                        vkGraphicsQueueIndex,
+                               VkDevice&                       vkLogicalDevice);
 
 bool LoadByteCode(const char* filePath, std::vector<char>& byteCode);
 
@@ -118,6 +121,24 @@ void GetVertexInputLayout(std::vector<VkVertexInputBindingDescription2EXT>& bind
 
 bool CreateRenderingAttachments(RenderContext* pRenderContext, Image& colorAttachment, Image& depthAttachment);
 
+void SingleShotCommandBegin(RenderContext* pRenderContext, VkCommandBuffer& vkCommandBuffer);
+
+void SingleShotCommandEnd(RenderContext* pRenderContext, VkCommandBuffer& vkCommandBuffer);
+
 void NameVulkanObject(VkDevice vkLogicalDevice, VkObjectType vkObjectType, uint64_t vkObject, const std::string& vkObjectName);
+
+void DebugLabelImageResource(RenderContext* pRenderContext, const Image& imageResource, const char* labelName);
+
+void DebugLabelBufferResource(RenderContext* pRenderContext, const Buffer& bufferResource, const char* labelName);
+
+void VulkanColorImageBarrier(RenderContext*        pRenderContext,
+                             VkCommandBuffer       vkCommand,
+                             VkImage               vkImage,
+                             VkImageLayout         vkLayoutOld,
+                             VkImageLayout         vkLayoutNew,
+                             VkAccessFlags2        vkAccessSrc,
+                             VkAccessFlags2        vkAccessDst,
+                             VkPipelineStageFlags2 vkStageSrc,
+                             VkPipelineStageFlags2 vkStageDst);
 
 #endif

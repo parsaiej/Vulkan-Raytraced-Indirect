@@ -145,38 +145,6 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
     // Grab a handle to the current frame.
     auto* pFrame = m_Owner->GetRenderSetting(kTokenCurrenFrameParams).UncheckedGet<FrameParams*>();
 
-    auto ColorAttachmentBarrier = [&](VkCommandBuffer vkCommand,
-                                      VkImage vkImage,
-                                      VkImageLayout vkLayoutOld,
-                                      VkImageLayout vkLayoutNew,
-                                      VkAccessFlags2 vkAccessSrc,
-                                      VkAccessFlags2 vkAccessDst,
-                                      VkPipelineStageFlags2 vkStageSrc,
-                                      VkPipelineStageFlags2 vkStageDst)
-    {
-        VkImageMemoryBarrier2 vkImageBarrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };
-        {
-            vkImageBarrier.image               = vkImage;
-            vkImageBarrier.oldLayout           = vkLayoutOld;
-            vkImageBarrier.newLayout           = vkLayoutNew;
-            vkImageBarrier.srcAccessMask       = vkAccessSrc;
-            vkImageBarrier.dstAccessMask       = vkAccessDst;
-            vkImageBarrier.srcStageMask        = vkStageSrc;
-            vkImageBarrier.dstStageMask        = vkStageDst;
-            vkImageBarrier.srcQueueFamilyIndex = pRenderContext->GetCommandQueueIndex();
-            vkImageBarrier.dstQueueFamilyIndex = pRenderContext->GetCommandQueueIndex();
-            vkImageBarrier.subresourceRange    = { VK_IMAGE_ASPECT_COLOR_BIT, 0U, 1U, 0U, 1U };
-        }
-
-        VkDependencyInfo vkDependencyInfo = { VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
-        {
-            vkDependencyInfo.imageMemoryBarrierCount = 1U;
-            vkDependencyInfo.pImageMemoryBarriers    = &vkImageBarrier;
-        }
-
-        vkCmdPipelineBarrier2(vkCommand, &vkDependencyInfo);
-    };
-
     // Configure Attachments
     // --------------------------------------------
 
@@ -201,14 +169,15 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
     // Record
     // --------------------------------------------
 
-    ColorAttachmentBarrier(pFrame->cmd,
-                           m_ColorAttachment.image,
-                           VK_IMAGE_LAYOUT_UNDEFINED,
-                           VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                           VK_ACCESS_2_NONE,
-                           VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-                           VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
-                           VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT);
+    VulkanColorImageBarrier(pRenderContext,
+                            pFrame->cmd,
+                            m_ColorAttachment.image,
+                            VK_IMAGE_LAYOUT_UNDEFINED,
+                            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                            VK_ACCESS_2_NONE,
+                            VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+                            VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+                            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT);
 
     VkRenderingInfo vkRenderingInfo = { VK_STRUCTURE_TYPE_RENDERING_INFO };
     {
@@ -257,11 +226,10 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
 
     for (const auto& pMesh : pScene->GetMeshList())
     {
-        Buffer positionBuffer;
-        Buffer normalBuffer;
-        Buffer indexBuffer;
-        Buffer texCoordBuffer;
-        pResources->GetMeshResources(pMesh->GetResourceHandle(), positionBuffer, normalBuffer, indexBuffer, texCoordBuffer);
+        ResourceRegistry::MeshResources mesh;
+        pResources->GetMeshResources(pMesh->GetResourceHandle(), mesh);
+
+        /*
 
         // Try to get material.
         Material* pMaterial = nullptr;
@@ -276,13 +244,15 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
             vkCmdBindDescriptorSets(pFrame->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_PipelineLayout, 0U, 1U, &materialDescriptorSet, 0U, nullptr);
         }
 
-        VmaAllocationInfo allocationInfo;
-        vmaGetAllocationInfo(pRenderContext->GetAllocator(), indexBuffer.bufferAllocation, &allocationInfo);
+        */
 
-        vkCmdBindIndexBuffer(pFrame->cmd, indexBuffer.buffer, 0U, VK_INDEX_TYPE_UINT32);
+        VmaAllocationInfo allocationInfo;
+        vmaGetAllocationInfo(pRenderContext->GetAllocator(), mesh.indices.bufferAllocation, &allocationInfo);
+
+        vkCmdBindIndexBuffer(pFrame->cmd, mesh.indices.buffer, 0U, VK_INDEX_TYPE_UINT32);
 
         std::array<VkDeviceSize, 3> vertexBufferOffset = { 0U, 0U, 0U };
-        std::array<VkBuffer, 3>     vertexBuffers      = { positionBuffer.buffer, normalBuffer.buffer, texCoordBuffer.buffer };
+        std::array<VkBuffer, 3>     vertexBuffers      = { mesh.positions.buffer, mesh.normals.buffer, mesh.texCoords.buffer };
 
         vkCmdBindVertexBuffers(pFrame->cmd, 0U, 3U, vertexBuffers.data(), vertexBufferOffset.data());
 
@@ -296,23 +266,25 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
 
     // Copy the internal color attachment to back buffer.
 
-    ColorAttachmentBarrier(pFrame->cmd,
-                           m_ColorAttachment.image,
-                           VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                           VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                           VK_ACCESS_2_NONE,
-                           VK_ACCESS_2_MEMORY_READ_BIT,
-                           VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-                           VK_PIPELINE_STAGE_2_TRANSFER_BIT);
+    VulkanColorImageBarrier(pRenderContext,
+                            pFrame->cmd,
+                            m_ColorAttachment.image,
+                            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                            VK_ACCESS_2_NONE,
+                            VK_ACCESS_2_MEMORY_READ_BIT,
+                            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                            VK_PIPELINE_STAGE_2_TRANSFER_BIT);
 
-    ColorAttachmentBarrier(pFrame->cmd,
-                           pFrame->backBuffer,
-                           VK_IMAGE_LAYOUT_UNDEFINED,
-                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                           VK_ACCESS_2_MEMORY_READ_BIT,
-                           VK_ACCESS_2_MEMORY_WRITE_BIT,
-                           VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-                           VK_PIPELINE_STAGE_2_TRANSFER_BIT);
+    VulkanColorImageBarrier(pRenderContext,
+                            pFrame->cmd,
+                            pFrame->backBuffer,
+                            VK_IMAGE_LAYOUT_UNDEFINED,
+                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                            VK_ACCESS_2_MEMORY_READ_BIT,
+                            VK_ACCESS_2_MEMORY_WRITE_BIT,
+                            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                            VK_PIPELINE_STAGE_2_TRANSFER_BIT);
 
     VkImageCopy backBufferCopy = {};
     {
@@ -329,12 +301,13 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
                    1U,
                    &backBufferCopy);
 
-    ColorAttachmentBarrier(pFrame->cmd,
-                           pFrame->backBuffer,
-                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                           VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-                           VK_ACCESS_2_MEMORY_WRITE_BIT,
-                           VK_ACCESS_2_MEMORY_READ_BIT,
-                           VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-                           VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT);
+    VulkanColorImageBarrier(pRenderContext,
+                            pFrame->cmd,
+                            pFrame->backBuffer,
+                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                            VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                            VK_ACCESS_2_MEMORY_WRITE_BIT,
+                            VK_ACCESS_2_MEMORY_READ_BIT,
+                            VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                            VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT);
 }

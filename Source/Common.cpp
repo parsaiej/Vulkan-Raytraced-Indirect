@@ -28,7 +28,13 @@ bool CreateRenderingAttachments(RenderContext* pRenderContext, Image& colorAttac
             imageAllocInfo.usage = VMA_MEMORY_USAGE_AUTO;
         }
 
-        Check(vmaCreateImage(pRenderContext->GetAllocator(), &imageInfo, &imageAllocInfo, &attachment.image, &attachment.imageAllocation, VK_NULL_HANDLE), "Failed to create attachment allocation.");
+        Check(vmaCreateImage(pRenderContext->GetAllocator(),
+                             &imageInfo,
+                             &imageAllocInfo,
+                             &attachment.image,
+                             &attachment.imageAllocation,
+                             VK_NULL_HANDLE),
+              "Failed to create attachment allocation.");
 
 #ifdef _DEBUG
         auto attachmentName = std::format("{} Attachment", ((imageAspect & VK_IMAGE_ASPECT_COLOR_BIT) != 0U) ? "Color" : "Depth");
@@ -49,7 +55,10 @@ bool CreateRenderingAttachments(RenderContext* pRenderContext, Image& colorAttac
         Check(vkCreateImageView(pRenderContext->GetDevice(), &imageViewInfo, nullptr, &attachment.imageView), "Failed to create attachment view.");
     };
 
-    CreateAttachment(colorAttachment, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
+    CreateAttachment(colorAttachment,
+                     VK_FORMAT_R8G8B8A8_UNORM,
+                     VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+                     VK_IMAGE_ASPECT_COLOR_BIT);
     CreateAttachment(depthAttachment, VK_FORMAT_D32_SFLOAT, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_IMAGE_ASPECT_DEPTH_BIT);
 
     return true;
@@ -57,8 +66,9 @@ bool CreateRenderingAttachments(RenderContext* pRenderContext, Image& colorAttac
 
 bool CreatePhysicallyBasedMaterialDescriptorLayout(const VkDevice& vkLogicalDevice, VkDescriptorSetLayout& vkDescriptorSetLayout)
 {
-    std::array<VkDescriptorSetLayoutBinding, 1> vkDescriptorSetLayoutBindings = { // Albedo only for now.
-                                                                                  { { 0U, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1U, VK_SHADER_STAGE_FRAGMENT_BIT, VK_NULL_HANDLE } }
+    std::array<VkDescriptorSetLayoutBinding, 1> vkDescriptorSetLayoutBindings = {
+        // Albedo only for now.
+        { { 0U, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1U, VK_SHADER_STAGE_FRAGMENT_BIT, VK_NULL_HANDLE } }
     };
 
     VkDescriptorSetLayoutCreateInfo vkDescriptorSetLayoutInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
@@ -134,7 +144,10 @@ bool SelectVulkanPhysicalDevice(const VkInstance& vkInstance, const std::vector<
     return true;
 }
 
-bool CreateVulkanLogicalDevice(const VkPhysicalDevice& vkPhysicalDevice, const std::vector<const char*>& requiredExtensions, uint32_t vkGraphicsQueueIndex, VkDevice& vkLogicalDevice)
+bool CreateVulkanLogicalDevice(const VkPhysicalDevice&         vkPhysicalDevice,
+                               const std::vector<const char*>& requiredExtensions,
+                               uint32_t                        vkGraphicsQueueIndex,
+                               VkDevice&                       vkLogicalDevice)
 {
     float graphicsQueuePriority = 1.0;
 
@@ -203,7 +216,8 @@ bool LoadByteCode(const char* filePath, std::vector<char>& byteCode)
 
 void SetDefaultRenderState(VkCommandBuffer commandBuffer)
 {
-    static VkColorComponentFlags s_DefaultWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+    static VkColorComponentFlags s_DefaultWriteMask =
+        VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
 
     static VkColorBlendEquationEXT s_DefaultColorBlend = {
         // Color
@@ -343,4 +357,116 @@ void NameVulkanObject(VkDevice vkLogicalDevice, VkObjectType vkObjectType, uint6
     attachmentNameInfo.objectHandle = vkObject;
 
     vkSetDebugUtilsObjectNameEXT(vkLogicalDevice, &attachmentNameInfo);
+}
+
+void VulkanColorImageBarrier(RenderContext*        pRenderContext,
+                             VkCommandBuffer       vkCommand,
+                             VkImage               vkImage,
+                             VkImageLayout         vkLayoutOld,
+                             VkImageLayout         vkLayoutNew,
+                             VkAccessFlags2        vkAccessSrc,
+                             VkAccessFlags2        vkAccessDst,
+                             VkPipelineStageFlags2 vkStageSrc,
+                             VkPipelineStageFlags2 vkStageDst)
+{
+    VkImageMemoryBarrier2 vkImageBarrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };
+    {
+        vkImageBarrier.image               = vkImage;
+        vkImageBarrier.oldLayout           = vkLayoutOld;
+        vkImageBarrier.newLayout           = vkLayoutNew;
+        vkImageBarrier.srcAccessMask       = vkAccessSrc;
+        vkImageBarrier.dstAccessMask       = vkAccessDst;
+        vkImageBarrier.srcStageMask        = vkStageSrc;
+        vkImageBarrier.dstStageMask        = vkStageDst;
+        vkImageBarrier.srcQueueFamilyIndex = pRenderContext->GetCommandQueueIndex();
+        vkImageBarrier.dstQueueFamilyIndex = pRenderContext->GetCommandQueueIndex();
+        vkImageBarrier.subresourceRange    = { VK_IMAGE_ASPECT_COLOR_BIT, 0U, 1U, 0U, 1U };
+    }
+
+    VkDependencyInfo vkDependencyInfo = { VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
+    {
+        vkDependencyInfo.imageMemoryBarrierCount = 1U;
+        vkDependencyInfo.pImageMemoryBarriers    = &vkImageBarrier;
+    }
+
+    vkCmdPipelineBarrier2(vkCommand, &vkDependencyInfo);
+}
+
+void DebugLabelImageResource(RenderContext* pRenderContext, const Image& imageResource, const char* labelName)
+{
+#ifdef _DEBUG
+    // Label the allocation.
+    vmaSetAllocationName(pRenderContext->GetAllocator(), imageResource.imageAllocation, std::format("Image Alloc - [{}]", labelName).c_str());
+
+    // Label the image object.
+    NameVulkanObject(pRenderContext->GetDevice(),
+                     VK_OBJECT_TYPE_IMAGE,
+                     reinterpret_cast<uint64_t>(imageResource.image),
+                     std::format("Image - [{}]", labelName));
+
+    if (imageResource.imageView != VK_NULL_HANDLE)
+    {
+        // Label the image view object.
+        NameVulkanObject(pRenderContext->GetDevice(),
+                         VK_OBJECT_TYPE_IMAGE_VIEW,
+                         reinterpret_cast<uint64_t>(imageResource.imageView),
+                         std::format("Image View - [{}]", labelName));
+    }
+#endif
+}
+
+void DebugLabelBufferResource(RenderContext* pRenderContext, const Buffer& bufferResource, const char* labelName)
+{
+#ifdef _DEBUG
+    // Label the allocation.
+    vmaSetAllocationName(pRenderContext->GetAllocator(), bufferResource.bufferAllocation, std::format("Buffer Alloc - [{}]", labelName).c_str());
+
+    // Label the buffer object.
+    NameVulkanObject(pRenderContext->GetDevice(),
+                     VK_OBJECT_TYPE_BUFFER,
+                     reinterpret_cast<uint64_t>(bufferResource.buffer),
+                     std::format("Buffer - [{}]", labelName));
+
+    if (bufferResource.bufferView != VK_NULL_HANDLE)
+    {
+        // Label the image view object.
+        NameVulkanObject(pRenderContext->GetDevice(),
+                         VK_OBJECT_TYPE_BUFFER_VIEW,
+                         reinterpret_cast<uint64_t>(bufferResource.bufferView),
+                         std::format("Buffer View - [{}]", labelName));
+    }
+#endif
+}
+
+void SingleShotCommandBegin(RenderContext* pRenderContext, VkCommandBuffer& vkCommandBuffer)
+{
+    VkCommandBufferAllocateInfo vkCommandAllocateInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
+    {
+        vkCommandAllocateInfo.commandBufferCount = 1U;
+        vkCommandAllocateInfo.commandPool        = pRenderContext->GetCommandPool();
+    }
+
+    Check(vkAllocateCommandBuffers(pRenderContext->GetDevice(), &vkCommandAllocateInfo, &vkCommandBuffer), "Failed to created command buffer");
+
+    VkCommandBufferBeginInfo vkCommandsBeginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+    {
+        vkCommandsBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    }
+    Check(vkBeginCommandBuffer(vkCommandBuffer, &vkCommandsBeginInfo), "Failed to begin recording commands");
+}
+
+void SingleShotCommandEnd(RenderContext* pRenderContext, VkCommandBuffer& vkCommandBuffer)
+{
+    Check(vkEndCommandBuffer(vkCommandBuffer), "Failed to end recording commands");
+
+    VkSubmitInfo vkSubmitInfo = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
+    {
+        vkSubmitInfo.commandBufferCount = 1U;
+        vkSubmitInfo.pCommandBuffers    = &vkCommandBuffer;
+    }
+    Check(vkQueueSubmit(pRenderContext->GetCommandQueue(), 1U, &vkSubmitInfo, VK_NULL_HANDLE), "Failed to submit commands to the graphics queue.");
+
+    // Wait for the commands to complete.
+    // -----------------------------------------------------
+    Check(vkDeviceWaitIdle(pRenderContext->GetDevice()), "Failed to wait for commands to finish dispatching.");
 }

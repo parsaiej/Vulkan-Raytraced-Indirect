@@ -5,9 +5,6 @@
 #include <ResourceRegistry.h>
 #include <Scene.h>
 
-#define GLM_ENABLE_EXPERIMENTAL
-#include <glm/gtx/string_cast.hpp>
-
 HdDirtyBits Mesh::GetInitialDirtyBitsMask() const { return HdChangeTracker::AllSceneDirtyBits; }
 
 void Mesh::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParams, HdDirtyBits* pDirtyBits, const TfToken& reprToken)
@@ -24,6 +21,7 @@ void Mesh::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParams, H
         m_DebugColor = { 1.0F, 0.0F, 0.0F };
     }
 
+    // Extract pointers to data lists for the mesh.
     auto pPointList    = pSceneDelegate->Get(id, HdTokens->points).Get<VtVec3fArray>();
     auto pNormalList   = pSceneDelegate->Get(id, HdTokens->normals).Get<VtVec3fArray>();
     auto pTexcoordList = pSceneDelegate->Get(id, TfToken("primvars:st")).Get<VtVec2fArray>();
@@ -35,6 +33,7 @@ void Mesh::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParams, H
     // Initialize the mesh util.
     HdMeshUtil meshUtil(&topology, id);
 
+    // Reconstruct the indices / mesh topology.
     VtIntArray trianglePrimitiveParams;
     meshUtil.ComputeTriangleIndices(&pIndexList, &trianglePrimitiveParams);
 
@@ -44,10 +43,7 @@ void Mesh::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParams, H
         m_ResourceHandle = pResourceRegistry->PushMeshRequest({ id, pPointList, pNormalList, pIndexList, pTexcoordList });
     }
 
-    spdlog::info("Discovered Material ID: {}", pSceneDelegate->GetMaterialId(id).GetHash());
-
     // Get the world matrix.
-    // m_LocalToWorld = glm::transpose(glm::make_mat4(pSceneDelegate->GetTransform(id).data()));
     m_LocalToWorld = GfMatrix4f(pSceneDelegate->GetTransform(id));
 
     // Store material binding (if any)

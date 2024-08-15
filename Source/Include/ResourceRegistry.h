@@ -30,25 +30,33 @@ public:
         SdfAssetPath imagePathMetallic;
     };
 
+    struct MeshResources
+    {
+        Buffer indices;
+        Buffer positions;
+        Buffer normals;
+        Buffer texCoords;
+    };
+
     // Queues a GPU-upload request for vertex and index mesh buffers.
     inline uint64_t PushMeshRequest(MeshRequest meshRequest)
     {
-        m_PendingMeshRequests.emplace(m_MeshCounter, meshRequest);
-        return m_MeshCounter++;
+        m_PendingMeshRequests.emplace(meshRequest);
+        return meshRequest.id.GetHash();
     }
 
     inline uint64_t PushMaterialRequest(MaterialRequest materialRequest)
     {
-        m_PendingMaterialRequests.emplace(m_MaterialCounter, materialRequest);
-        return m_MaterialCounter++;
+        m_PendingMaterialRequests.emplace(materialRequest);
+        return materialRequest.id.GetHash();
     }
 
-    bool GetMeshResources(uint64_t resourceHandle, Buffer& positionBuffer, Buffer& normalBuffer, Buffer& indexBuffer, Buffer& texCoordBuffer);
+    bool GetMeshResources(uint64_t resourceHandle, MeshResources& meshResources);
     bool GetMaterialResources(uint64_t resourceHandle, VkDescriptorSet& descriptorSet);
 
     void TryRebuildMaterialDescriptors(RenderContext* pRenderContext, VkDescriptorSetLayout vkDescriptorSetLayout);
 
-    explicit ResourceRegistry(RenderContext* pRenderContext) : m_RenderContext(pRenderContext) {}
+    explicit ResourceRegistry(RenderContext* pRenderContext);
 
 protected:
 
@@ -57,8 +65,14 @@ protected:
 
 private:
 
+    uint32_t m_BufferCounter {};
+    uint32_t m_ImageCounter {};
+
     const static uint32_t kMaxBufferResources = 512U;
     const static uint32_t kMaxImageResources  = 512U;
+
+    std::array<Buffer, kMaxBufferResources> m_BufferResources;
+    std::array<Image, kMaxImageResources>   m_ImageResources;
 
     void SyncDescriptorSets(RenderContext*                               pRenderContext,
                             const std::array<Image, kMaxImageResources>& imageResources,
@@ -66,18 +80,18 @@ private:
 
     RenderContext* m_RenderContext;
 
-    // Resources.
-    std::array<Buffer, kMaxBufferResources> m_BufferResources;
-    std::array<Image, kMaxImageResources>   m_ImageResources;
+    std::queue<MeshRequest>     m_PendingMeshRequests;
+    std::queue<MaterialRequest> m_PendingMaterialRequests;
 
-    std::queue<std::pair<uint64_t, MeshRequest>>     m_PendingMeshRequests;
-    std::queue<std::pair<uint64_t, MaterialRequest>> m_PendingMaterialRequests;
+    std::map<uint64_t, MeshResources> m_MeshResourceMap;
 
     // Descriptor Sets
     std::vector<VkDescriptorSet> m_DescriptorSets;
 
-    uint64_t m_MeshCounter {};
-    uint64_t m_MaterialCounter {};
+    void ProcessMeshRequest(RenderContext*                       pRenderContext,
+                            const ResourceRegistry::MeshRequest& meshRequest,
+                            Buffer&                              stagingBuffer,
+                            ResourceRegistry::MeshResources*     pMesh);
 };
 
 #endif

@@ -3,6 +3,12 @@
 #include <RenderContext.h>
 #include <ResourceRegistry.h>
 
+ResourceRegistry::ResourceRegistry(RenderContext* pRenderContext) : m_RenderContext(pRenderContext)
+{
+    // Create default image.
+}
+
+// Local utility for emplacing an alpha value every 12 bytes.
 void InterleaveImageAlpha(stbi_uc** pImageData, int& width, int& height, int& channels)
 {
     auto* pAlphaImage = new unsigned char[width * height * 4U]; // NOLINT
@@ -23,39 +29,6 @@ void InterleaveImageAlpha(stbi_uc** pImageData, int& width, int& height, int& ch
     // There is now an alpha channel.
     channels = 4U;
 }
-
-void ImageBarrier(RenderContext*        pRenderContext,
-                  VkCommandBuffer       vkCommand,
-                  VkImage               vkImage,
-                  VkImageLayout         vkLayoutOld,
-                  VkImageLayout         vkLayoutNew,
-                  VkAccessFlags2        vkAccessSrc,
-                  VkAccessFlags2        vkAccessDst,
-                  VkPipelineStageFlags2 vkStageSrc,
-                  VkPipelineStageFlags2 vkStageDst)
-{
-    VkImageMemoryBarrier2 vkImageBarrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };
-    {
-        vkImageBarrier.image               = vkImage;
-        vkImageBarrier.oldLayout           = vkLayoutOld;
-        vkImageBarrier.newLayout           = vkLayoutNew;
-        vkImageBarrier.srcAccessMask       = vkAccessSrc;
-        vkImageBarrier.dstAccessMask       = vkAccessDst;
-        vkImageBarrier.srcStageMask        = vkStageSrc;
-        vkImageBarrier.dstStageMask        = vkStageDst;
-        vkImageBarrier.srcQueueFamilyIndex = pRenderContext->GetCommandQueueIndex();
-        vkImageBarrier.dstQueueFamilyIndex = pRenderContext->GetCommandQueueIndex();
-        vkImageBarrier.subresourceRange    = { VK_IMAGE_ASPECT_COLOR_BIT, 0U, 1U, 0U, 1U };
-    }
-
-    VkDependencyInfo vkDependencyInfo = { VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
-    {
-        vkDependencyInfo.imageMemoryBarrierCount = 1U;
-        vkDependencyInfo.pImageMemoryBarriers    = &vkImageBarrier;
-    }
-
-    vkCmdPipelineBarrier2(vkCommand, &vkDependencyInfo);
-};
 
 void ProcessMaterialRequest(RenderContext*                           pRenderContext,
                             const ResourceRegistry::MaterialRequest& materialRequest,
@@ -122,83 +95,55 @@ void ProcessMaterialRequest(RenderContext*                           pRenderCont
     }
     Check(vkCreateImageView(pRenderContext->GetDevice(), &imageViewInfo, nullptr, &albedoImage.imageView), "Failed to create material image view.");
 
+    DebugLabelImageResource(pRenderContext, albedoImage, materialRequest.id.GetName().c_str());
+
     // Copy Staging -> Device Memory.
     // -----------------------------------------------------
 
-    VkCommandBufferAllocateInfo vkCommandAllocateInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
-    {
-        vkCommandAllocateInfo.commandBufferCount = 1U;
-        vkCommandAllocateInfo.commandPool        = pRenderContext->GetCommandPool();
-    }
-
     VkCommandBuffer vkCommand = VK_NULL_HANDLE;
-    Check(vkAllocateCommandBuffers(pRenderContext->GetDevice(), &vkCommandAllocateInfo, &vkCommand),
-          "Failed to created command buffer for uploading scene resource "
-          "memory.");
-
-    VkCommandBufferBeginInfo vkCommandsBeginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+    SingleShotCommandBegin(pRenderContext, vkCommand);
     {
-        vkCommandsBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        VmaAllocationInfo allocationInfo;
+        vmaGetAllocationInfo(pRenderContext->GetAllocator(), albedoImage.imageAllocation, &allocationInfo);
+
+        VulkanColorImageBarrier(pRenderContext,
+                                vkCommand,
+                                albedoImage.image,
+                                VK_IMAGE_LAYOUT_UNDEFINED,
+                                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                VK_ACCESS_2_NONE,
+                                VK_ACCESS_2_MEMORY_READ_BIT,
+                                VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT_KHR,
+                                VK_PIPELINE_STAGE_2_TRANSFER_BIT);
+
+        VkBufferImageCopy bufferImageCopyInfo;
+        {
+            bufferImageCopyInfo.bufferOffset      = 0U;
+            bufferImageCopyInfo.bufferImageHeight = 0U;
+            bufferImageCopyInfo.bufferRowLength   = 0U;
+            bufferImageCopyInfo.imageExtent       = { static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1U };
+            bufferImageCopyInfo.imageOffset       = { 0U, 0U, 0U };
+            bufferImageCopyInfo.imageSubresource  = { VK_IMAGE_ASPECT_COLOR_BIT, 0U, 0U, 1U };
+        }
+        vkCmdCopyBufferToImage(vkCommand, stagingBuffer.buffer, albedoImage.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1U, &bufferImageCopyInfo);
+
+        VulkanColorImageBarrier(pRenderContext,
+                                vkCommand,
+                                albedoImage.image,
+                                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                VK_ACCESS_2_NONE,
+                                VK_ACCESS_2_MEMORY_READ_BIT,
+                                VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                                VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT_KHR);
     }
-    Check(vkBeginCommandBuffer(vkCommand, &vkCommandsBeginInfo), "Failed to begin recording upload commands");
-
-    VmaAllocationInfo allocationInfo;
-    vmaGetAllocationInfo(pRenderContext->GetAllocator(), albedoImage.imageAllocation, &allocationInfo);
-
-    ImageBarrier(pRenderContext,
-                 vkCommand,
-                 albedoImage.image,
-                 VK_IMAGE_LAYOUT_UNDEFINED,
-                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                 VK_ACCESS_2_NONE,
-                 VK_ACCESS_2_MEMORY_READ_BIT,
-                 VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT_KHR,
-                 VK_PIPELINE_STAGE_2_TRANSFER_BIT);
-
-    VkBufferImageCopy bufferImageCopyInfo;
-    {
-        bufferImageCopyInfo.bufferOffset      = 0U;
-        bufferImageCopyInfo.bufferImageHeight = 0U;
-        bufferImageCopyInfo.bufferRowLength   = 0U;
-        bufferImageCopyInfo.imageExtent       = { static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1U };
-        bufferImageCopyInfo.imageOffset       = { 0U, 0U, 0U };
-        bufferImageCopyInfo.imageSubresource  = { VK_IMAGE_ASPECT_COLOR_BIT, 0U, 0U, 1U };
-    }
-    vkCmdCopyBufferToImage(vkCommand, stagingBuffer.buffer, albedoImage.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1U, &bufferImageCopyInfo);
-
-    ImageBarrier(pRenderContext,
-                 vkCommand,
-                 albedoImage.image,
-                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                 VK_ACCESS_2_NONE,
-                 VK_ACCESS_2_MEMORY_READ_BIT,
-                 VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-                 VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT_KHR);
-
-    Check(vkEndCommandBuffer(vkCommand), "Failed to end recording upload commands");
-
-    VkSubmitInfo vkSubmitInfo = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
-    {
-        vkSubmitInfo.commandBufferCount = 1U;
-        vkSubmitInfo.pCommandBuffers    = &vkCommand;
-    }
-    Check(vkQueueSubmit(pRenderContext->GetCommandQueue(), 1U, &vkSubmitInfo, VK_NULL_HANDLE),
-          "Failed to submit copy commands to the graphics queue.");
-
-    // Wait for the copy to complete.
-    // -----------------------------------------------------
-
-    Check(vkDeviceWaitIdle(pRenderContext->GetDevice()), "Failed to wait for copy commands to finish dispatching.");
+    SingleShotCommandEnd(pRenderContext, vkCommand);
 }
 
-void ProcessMeshRequest(RenderContext*                       pRenderContext,
-                        const ResourceRegistry::MeshRequest& meshRequest,
-                        Buffer&                              stagingBuffer,
-                        Buffer&                              positionBuffer,
-                        Buffer&                              normalBuffer,
-                        Buffer&                              indexBuffer,
-                        Buffer&                              texCoordBuffer)
+void ResourceRegistry::ProcessMeshRequest(RenderContext*                       pRenderContext,
+                                          const ResourceRegistry::MeshRequest& meshRequest,
+                                          Buffer&                              stagingBuffer,
+                                          ResourceRegistry::MeshResources*     pMesh)
 {
     spdlog::info("Processing Mesh Request for {}", meshRequest.id.GetName());
 
@@ -214,22 +159,14 @@ void ProcessMeshRequest(RenderContext*                       pRenderContext,
         VmaAllocationCreateInfo allocInfo = {};
         allocInfo.usage                   = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
 
-        Buffer meshBuffer {};
-        Check(vmaCreateBuffer(pRenderContext->GetAllocator(), &bufferInfo, &allocInfo, &meshBuffer.buffer, &meshBuffer.bufferAllocation, nullptr),
+        // Obtain a buffer resource from the pool.
+        auto* pMeshBuffer = &m_BufferResources.at(m_BufferCounter++);
+
+        Check(m_BufferCounter < kMaxBufferResources, "Exceeded the maximum buffer resources.");
+
+        Check(vmaCreateBuffer(pRenderContext->GetAllocator(), &bufferInfo, &allocInfo, &pMeshBuffer->buffer, &pMeshBuffer->bufferAllocation, nullptr),
               "Failed to create dedicated buffer memory.");
 
-#ifdef _DEBUG
-        // Label the allocation.
-        vmaSetAllocationName(pRenderContext->GetAllocator(),
-                             meshBuffer.bufferAllocation,
-                             std::format("Index Buffer Alloc - [{}]", meshRequest.id.GetName()).c_str());
-
-        // Label the buffer object.
-        NameVulkanObject(pRenderContext->GetDevice(),
-                         VK_OBJECT_TYPE_BUFFER,
-                         reinterpret_cast<uint64_t>(meshBuffer.buffer),
-                         std::format("Vertex Buffer - [{}]", meshRequest.id.GetName()));
-#endif
         // Copy Host -> Staging Memory.
         // -----------------------------------------------------
 
@@ -246,116 +183,46 @@ void ProcessMeshRequest(RenderContext*                       pRenderContext,
         // Copy Staging -> Device Memory.
         // -----------------------------------------------------
 
-        VkCommandBufferAllocateInfo vkCommandAllocateInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
-        {
-            vkCommandAllocateInfo.commandBufferCount = 1U;
-            vkCommandAllocateInfo.commandPool        = pRenderContext->GetCommandPool();
-        }
-
         VkCommandBuffer vkCommand = VK_NULL_HANDLE;
-        Check(vkAllocateCommandBuffers(pRenderContext->GetDevice(), &vkCommandAllocateInfo, &vkCommand),
-              "Failed to created command buffer for uploading scene resource "
-              "memory.");
-
-        VkCommandBufferBeginInfo vkCommandsBeginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+        SingleShotCommandBegin(pRenderContext, vkCommand);
         {
-            vkCommandsBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+            VmaAllocationInfo allocationInfo;
+            vmaGetAllocationInfo(pRenderContext->GetAllocator(), pMeshBuffer->bufferAllocation, &allocationInfo);
+
+            VkBufferCopy copyInfo;
+            {
+                copyInfo.srcOffset = 0U;
+                copyInfo.dstOffset = 0U;
+                copyInfo.size      = dataSize;
+            }
+            vkCmdCopyBuffer(vkCommand, stagingBuffer.buffer, pMeshBuffer->buffer, 1U, &copyInfo);
         }
-        Check(vkBeginCommandBuffer(vkCommand, &vkCommandsBeginInfo), "Failed to begin recording upload commands");
+        SingleShotCommandEnd(pRenderContext, vkCommand);
 
-        VmaAllocationInfo allocationInfo;
-        vmaGetAllocationInfo(pRenderContext->GetAllocator(), meshBuffer.bufferAllocation, &allocationInfo);
-
-        VkBufferCopy copyInfo;
-        {
-            copyInfo.srcOffset = 0U;
-            copyInfo.dstOffset = 0U;
-            copyInfo.size      = dataSize;
-        }
-        vkCmdCopyBuffer(vkCommand, stagingBuffer.buffer, meshBuffer.buffer, 1U, &copyInfo);
-
-        Check(vkEndCommandBuffer(vkCommand), "Failed to end recording upload commands");
-
-        VkSubmitInfo vkSubmitInfo = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
-        {
-            vkSubmitInfo.commandBufferCount = 1U;
-            vkSubmitInfo.pCommandBuffers    = &vkCommand;
-        }
-        Check(vkQueueSubmit(pRenderContext->GetCommandQueue(), 1U, &vkSubmitInfo, VK_NULL_HANDLE),
-              "Failed to submit copy commands to the graphics queue.");
-
-        // Wait for the copy to complete.
-        // -----------------------------------------------------
-
-        Check(vkDeviceWaitIdle(pRenderContext->GetDevice()), "Failed to wait for copy commands to finish dispatching.");
-
-        return meshBuffer;
+        return *pMeshBuffer;
     };
 
-    indexBuffer    = CreateMeshBuffer(meshRequest.pIndices.data(),
-                                   sizeof(GfVec3i) * static_cast<uint32_t>(meshRequest.pIndices.size()),
-                                   VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
-    positionBuffer = CreateMeshBuffer(meshRequest.pPoints.data(),
-                                      sizeof(GfVec3f) * static_cast<uint32_t>(meshRequest.pPoints.size()),
+    pMesh->indices   = CreateMeshBuffer(meshRequest.pIndices.data(),
+                                      sizeof(GfVec3i) * static_cast<uint32_t>(meshRequest.pIndices.size()),
+                                      VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+    pMesh->positions = CreateMeshBuffer(meshRequest.pPoints.data(),
+                                        sizeof(GfVec3f) * static_cast<uint32_t>(meshRequest.pPoints.size()),
+                                        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+    pMesh->normals   = CreateMeshBuffer(meshRequest.pNormals.data(),
+                                      sizeof(GfVec3f) * static_cast<uint32_t>(meshRequest.pNormals.size()),
                                       VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-    normalBuffer   = CreateMeshBuffer(meshRequest.pNormals.data(),
-                                    sizeof(GfVec3f) * static_cast<uint32_t>(meshRequest.pNormals.size()),
-                                    VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-    texCoordBuffer = CreateMeshBuffer(meshRequest.pTexCoords.data(),
-                                      sizeof(GfVec2f) * static_cast<uint32_t>(meshRequest.pTexCoords.size()),
-                                      VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+    pMesh->texCoords = CreateMeshBuffer(meshRequest.pTexCoords.data(),
+                                        sizeof(GfVec2f) * static_cast<uint32_t>(meshRequest.pTexCoords.size()),
+                                        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+
+    /*
+    // Label the resources.
+    DebugLabelBufferResource(pRenderContext, indexBuffer, std::format("{} - Index", meshRequest.id.GetText()).c_str());
+    DebugLabelBufferResource(pRenderContext, positionBuffer, std::format("{} - Position", meshRequest.id.GetText()).c_str());
+    DebugLabelBufferResource(pRenderContext, normalBuffer, std::format("{} - Normal", meshRequest.id.GetText()).c_str());
+    DebugLabelBufferResource(pRenderContext, texCoordBuffer, std::format("{} - Texcoord", meshRequest.id.GetText()).c_str());
+    */
 }
-
-/*
-void ResourceRegistry::SyncDescriptorSets(RenderContext*                               pRenderContext,
-                                          const std::array<Image, kMaxImageResources>& imageResources,
-                                          std::vector<VkDescriptorSet>&                descriptorSets)
-{
-    // First nuke the descriptor pool.
-    vkResetDescriptorPool(pRenderContext->GetDevice(), pRenderContext->GetDescriptorPool(), 0x0);
-
-    // Clear the sets.
-    descriptorSets.resize(imageResources.size());
-
-    // Due to Vulkan API design need to fill a list of the same set layout for each set.
-    std::vector<VkDescriptorSetLayout> descriptorSetLayout(imageResources.size(), m_DescriptorSetLayout);
-
-    VkDescriptorSetAllocateInfo descriptorSetAllocationInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
-    {
-        descriptorSetAllocationInfo.descriptorPool = pRenderContext->GetDescriptorPool();
-        descriptorSetAllocationInfo.descriptorSetCount =
-            static_cast<uint32_t>(imageResources.size()); // WARNING: This is temporary while 1 image = 1 set.
-        descriptorSetAllocationInfo.pSetLayouts = descriptorSetLayout.data();
-    }
-    Check(vkAllocateDescriptorSets(pRenderContext->GetDevice(), &descriptorSetAllocationInfo, descriptorSets.data()),
-          "Failed to allocate material descriptors.");
-
-    // Update the descriptor sets.
-    std::vector<VkWriteDescriptorSet> descriptorSetWrites;
-
-    for (uint32_t imageIndex = 0U; imageIndex < imageResources.size(); imageIndex++)
-    {
-        VkDescriptorImageInfo descriptorImageInfo;
-        {
-            descriptorImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            descriptorImageInfo.imageView   = imageResources.at(imageIndex).imageView;
-            descriptorImageInfo.sampler     = VK_NULL_HANDLE;
-        }
-
-        VkWriteDescriptorSet writeInfo = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
-        {
-            writeInfo.descriptorType  = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-            writeInfo.descriptorCount = 1U;
-            writeInfo.dstBinding      = 0U;
-            writeInfo.dstSet          = descriptorSets.at(imageIndex);
-            writeInfo.pImageInfo      = &descriptorImageInfo;
-        }
-        descriptorSetWrites.push_back(writeInfo);
-    }
-
-    vkUpdateDescriptorSets(pRenderContext->GetDevice(), static_cast<uint32_t>(descriptorSetWrites.size()), descriptorSetWrites.data(), 0U, nullptr);
-}
-*/
 
 void ResourceRegistry::_Commit()
 {
@@ -391,15 +258,8 @@ void ResourceRegistry::_Commit()
     {
         auto meshRequest = m_PendingMeshRequests.front();
 
-        const uint64_t& i = 4U * meshRequest.first;
-
-        ProcessMeshRequest(m_RenderContext,
-                           meshRequest.second,
-                           stagingBuffer,
-                           m_BufferResources.at(i + 0U),
-                           m_BufferResources.at(i + 1U),
-                           m_BufferResources.at(i + 2U),
-                           m_BufferResources.at(i + 3U));
+        // Convert the mesh request into mesh resources.
+        ProcessMeshRequest(m_RenderContext, meshRequest, stagingBuffer, &m_MeshResourceMap[meshRequest.id.GetHash()]);
 
         // Request process, remove.
         m_PendingMeshRequests.pop();
@@ -412,8 +272,8 @@ void ResourceRegistry::_Commit()
     {
         auto materialRequest = m_PendingMaterialRequests.front();
 
-        const uint64_t& i = 1U * materialRequest.first;
-        ProcessMaterialRequest(m_RenderContext, materialRequest.second, stagingBuffer, m_ImageResources.at(i + 0U));
+        // const uint64_t& i = 1U * materialRequest.first;
+        // ProcessMaterialRequest(m_RenderContext, materialRequest.second, stagingBuffer, m_ImageResources.at(i + 0U));
 
         m_PendingMaterialRequests.pop();
     }
@@ -426,7 +286,7 @@ void ResourceRegistry::_GarbageCollect()
 {
     vkDeviceWaitIdle(m_RenderContext->GetDevice());
 
-    for (uint32_t bufferIndex = 0U; bufferIndex < 4U * m_MeshCounter; bufferIndex++)
+    for (uint32_t bufferIndex = 0U; bufferIndex <= m_BufferCounter; bufferIndex++)
     {
         if (m_BufferResources.at(bufferIndex).bufferView != VK_NULL_HANDLE)
             vkDestroyBufferView(m_RenderContext->GetDevice(), m_BufferResources.at(bufferIndex).bufferView, nullptr);
@@ -436,7 +296,7 @@ void ResourceRegistry::_GarbageCollect()
                          m_BufferResources.at(bufferIndex).bufferAllocation);
     }
 
-    for (uint32_t imageIndex = 0U; imageIndex < 1U * m_MaterialCounter; imageIndex++)
+    for (uint32_t imageIndex = 0U; imageIndex < m_ImageCounter; imageIndex++)
     {
         if (m_ImageResources.at(imageIndex).imageView != VK_NULL_HANDLE)
             vkDestroyImageView(m_RenderContext->GetDevice(), m_ImageResources.at(imageIndex).imageView, nullptr);
@@ -445,16 +305,12 @@ void ResourceRegistry::_GarbageCollect()
     }
 }
 
-bool ResourceRegistry::GetMeshResources(uint64_t resourceHandle,
-                                        Buffer&  positionBuffer,
-                                        Buffer&  normalBuffer,
-                                        Buffer&  indexBuffer,
-                                        Buffer&  texCoordBuffer)
+bool ResourceRegistry::GetMeshResources(uint64_t resourceHandle, MeshResources& meshResources)
 {
-    positionBuffer = m_BufferResources.at(4U * resourceHandle + 0U);
-    normalBuffer   = m_BufferResources.at(4U * resourceHandle + 1U);
-    indexBuffer    = m_BufferResources.at(4U * resourceHandle + 2U);
-    texCoordBuffer = m_BufferResources.at(4U * resourceHandle + 3U);
+    if (!m_MeshResourceMap.contains(resourceHandle))
+        return false;
+
+    meshResources = m_MeshResourceMap[resourceHandle];
 
     return true;
 }
