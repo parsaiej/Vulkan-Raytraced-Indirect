@@ -47,7 +47,7 @@ void Mesh::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParams, H
     m_LocalToWorld = GfMatrix4f(pSceneDelegate->GetTransform(id));
 
     // Store material binding (if any)
-    m_MaterialHash = static_cast<uint32_t>(pSceneDelegate->GetMaterialId(id).GetHash());
+    m_MaterialHash = pSceneDelegate->GetMaterialId(id).GetHash();
 
     m_Owner->GetRenderContext()->GetScene()->AddMesh(this);
 

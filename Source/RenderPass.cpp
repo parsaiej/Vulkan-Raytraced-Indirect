@@ -134,13 +134,47 @@ RenderPass::~RenderPass()
         vkDestroyShaderEXT(pRenderContext->GetDevice(), shader.second, nullptr);
 }
 
+void CreateMaterialDescriptor(RenderContext*                      pRenderContext,
+                              ResourceRegistry::MaterialResources materialResources,
+                              VkDescriptorSetLayout               vkDescriptorSetLayout,
+                              VkDescriptorSet*                    pDescriptorSet)
+{
+    VkDescriptorSetAllocateInfo descriptorSetAllocationInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
+    {
+        descriptorSetAllocationInfo.descriptorPool     = pRenderContext->GetDescriptorPool();
+        descriptorSetAllocationInfo.descriptorSetCount = 1U;
+        descriptorSetAllocationInfo.pSetLayouts        = &vkDescriptorSetLayout;
+    }
+    Check(vkAllocateDescriptorSets(pRenderContext->GetDevice(), &descriptorSetAllocationInfo, pDescriptorSet),
+          "Failed to allocate material descriptors.");
+
+    // Update the descriptor sets.
+    std::vector<VkWriteDescriptorSet> descriptorSetWrites;
+
+    VkDescriptorImageInfo descriptorImageInfo;
+    {
+        descriptorImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        descriptorImageInfo.imageView   = materialResources.albedo.imageView;
+        descriptorImageInfo.sampler     = VK_NULL_HANDLE; // TODO
+    }
+
+    VkWriteDescriptorSet writeInfo = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+    {
+        writeInfo.descriptorType  = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+        writeInfo.descriptorCount = 1U;
+        writeInfo.dstBinding      = 0U;
+        writeInfo.dstSet          = *pDescriptorSet;
+        writeInfo.pImageInfo      = &descriptorImageInfo;
+    }
+    descriptorSetWrites.push_back(writeInfo);
+
+    vkUpdateDescriptorSets(pRenderContext->GetDevice(), static_cast<uint32_t>(descriptorSetWrites.size()), descriptorSetWrites.data(), 0U, nullptr);
+}
+
 void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, const TfTokenVector& renderTags)
 {
     // Grab the render context.
     auto* pRenderContext = m_Owner->GetRenderContext();
-
-    // Sync materials
-    std::static_pointer_cast<ResourceRegistry>(m_Owner->GetResourceRegistry())->TryRebuildMaterialDescriptors(pRenderContext, m_DescriptorSetLayout);
 
     // Grab a handle to the current frame.
     auto* pFrame = m_Owner->GetRenderSetting(kTokenCurrenFrameParams).UncheckedGet<FrameParams*>();
@@ -229,22 +263,22 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
         ResourceRegistry::MeshResources mesh;
         pResources->GetMeshResources(pMesh->GetResourceHandle(), mesh);
 
-        /*
-
-        // Try to get material.
-        Material* pMaterial = nullptr;
         if (pMesh->GetMaterialHash() != UINT_MAX)
-            pMaterial = pScene->GetMaterialMap().at(pMesh->GetMaterialHash());
-
-        if (pMaterial != nullptr)
         {
-            VkDescriptorSet materialDescriptorSet = VK_NULL_HANDLE;
-            pResources->GetMaterialResources(pMaterial->GetResourceHandle(), materialDescriptorSet);
+            auto* pMaterialDescriptor = &m_MaterialDescriptors[pMesh->GetMaterialHash()];
 
-            vkCmdBindDescriptorSets(pFrame->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_PipelineLayout, 0U, 1U, &materialDescriptorSet, 0U, nullptr);
+            if (*pMaterialDescriptor == VK_NULL_HANDLE)
+            {
+                ResourceRegistry::MaterialResources material;
+                pResources->GetMaterialResources(pMesh->GetMaterialHash(), material);
+
+                // Build the descriptor if it doesn't exit.
+                CreateMaterialDescriptor(pRenderContext, material, m_DescriptorSetLayout, pMaterialDescriptor);
+            }
+
+            // Bind material.
+            vkCmdBindDescriptorSets(pFrame->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_PipelineLayout, 0U, 1U, pMaterialDescriptor, 0U, nullptr);
         }
-
-        */
 
         VmaAllocationInfo allocationInfo;
         vmaGetAllocationInfo(pRenderContext->GetAllocator(), mesh.indices.bufferAllocation, &allocationInfo);

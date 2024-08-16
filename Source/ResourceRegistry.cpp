@@ -3,9 +3,47 @@
 #include <RenderContext.h>
 #include <ResourceRegistry.h>
 
+void CreateSampledImageResource(RenderContext* pRenderContext, Image* pImage, uint32_t imageWidth, uint32_t imageHeight)
+{
+    // Create dedicate device memory for the image
+    // -----------------------------------------------------
+
+    VkImageCreateInfo imageInfo = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
+    imageInfo.imageType         = VK_IMAGE_TYPE_2D;
+    imageInfo.arrayLayers       = 1U;
+    imageInfo.mipLevels         = 1U;
+    imageInfo.samples           = VK_SAMPLE_COUNT_1_BIT;
+    imageInfo.tiling            = VK_IMAGE_TILING_LINEAR;
+    imageInfo.extent            = { static_cast<uint32_t>(imageWidth), static_cast<uint32_t>(imageHeight), 1U };
+    imageInfo.flags             = 0x0;
+    imageInfo.usage             = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    imageInfo.format            = VK_FORMAT_R8G8B8A8_SRGB;
+
+    VmaAllocationCreateInfo allocInfo = {};
+    allocInfo.usage                   = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+
+    Check(vmaCreateImage(pRenderContext->GetAllocator(), &imageInfo, &allocInfo, &pImage->image, &pImage->imageAllocation, nullptr),
+          "Failed to create dedicated image memory.");
+
+    // Create Image View.
+    // -----------------------------------------------------
+
+    VkImageViewCreateInfo imageViewInfo = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
+    {
+        imageViewInfo.viewType         = VK_IMAGE_VIEW_TYPE_2D;
+        imageViewInfo.image            = pImage->image;
+        imageViewInfo.format           = imageInfo.format;
+        imageViewInfo.components       = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A };
+        imageViewInfo.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0U, 1U, 0U, 1U };
+    }
+    Check(vkCreateImageView(pRenderContext->GetDevice(), &imageViewInfo, nullptr, &pImage->imageView), "Failed to create sampled image view.");
+}
+
 ResourceRegistry::ResourceRegistry(RenderContext* pRenderContext) : m_RenderContext(pRenderContext)
 {
     // Create default image.
+    auto* pDefaultImage = &m_ImageResources.at(m_ImageCounter++);
+    CreateSampledImageResource(pRenderContext, pDefaultImage, 4U, 4U);
 }
 
 // Local utility for emplacing an alpha value every 12 bytes.
@@ -30,114 +68,105 @@ void InterleaveImageAlpha(stbi_uc** pImageData, int& width, int& height, int& ch
     channels = 4U;
 }
 
-void ProcessMaterialRequest(RenderContext*                           pRenderContext,
-                            const ResourceRegistry::MaterialRequest& materialRequest,
-                            Buffer&                                  stagingBuffer,
-                            Image&                                   albedoImage)
+void ResourceRegistry::ProcessMaterialRequest(RenderContext*                           pRenderContext,
+                                              const ResourceRegistry::MaterialRequest& materialRequest,
+                                              Buffer&                                  stagingBuffer,
+                                              ResourceRegistry::MaterialResources*     pMaterial)
 {
     spdlog::info("Processing Material Request for {}", materialRequest.id.GetName());
 
-    if (materialRequest.imagePathAlbedo.GetResolvedPath().empty())
-        return;
-
-    int   width      = 0;
-    int   height     = 0;
-    int   channels   = 0;
-    auto* pImageData = stbi_load(materialRequest.imagePathAlbedo.GetResolvedPath().c_str(), &width, &height, &channels, STBI_rgb_alpha);
-
-    if (channels == 3U)
-        InterleaveImageAlpha(&pImageData, width, height, channels);
-
-    // Copy Host -> Staging Memory.
-    // -----------------------------------------------------
-
-    void* pMappedStagingMemory = nullptr;
-    Check(vmaMapMemory(pRenderContext->GetAllocator(), stagingBuffer.bufferAllocation, &pMappedStagingMemory),
-          "Failed to map a pointer to staging memory.");
+    auto TryCreateImage = [&](const SdfAssetPath& imageResourcePath) -> Image
     {
-        // Copy from Host -> Staging memory.
-        memcpy(pMappedStagingMemory, pImageData, channels * width * height); // NOLINT
+        if (imageResourcePath.GetResolvedPath().empty())
+            return m_ImageResources[0]; // The first image is the default one.
 
-        vmaUnmapMemory(pRenderContext->GetAllocator(), stagingBuffer.bufferAllocation);
-    }
+        int   width      = 0;
+        int   height     = 0;
+        int   channels   = 0;
+        auto* pImageData = stbi_load(imageResourcePath.GetResolvedPath().c_str(), &width, &height, &channels, 0U);
 
-    stbi_image_free(pImageData);
+        if (channels == 3U)
+            InterleaveImageAlpha(&pImageData, width, height, channels);
 
-    // Create dedicate device memory for the image
-    // -----------------------------------------------------
+        // Copy Host -> Staging Memory.
+        // -----------------------------------------------------
 
-    VkImageCreateInfo imageInfo = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
-    imageInfo.imageType         = VK_IMAGE_TYPE_2D;
-    imageInfo.arrayLayers       = 1U;
-    imageInfo.mipLevels         = 1U;
-    imageInfo.samples           = VK_SAMPLE_COUNT_1_BIT;
-    imageInfo.tiling            = VK_IMAGE_TILING_LINEAR;
-    imageInfo.extent            = { static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1U };
-    imageInfo.flags             = 0x0;
-    imageInfo.usage             = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-    imageInfo.format            = VK_FORMAT_R8G8B8A8_SRGB;
-
-    VmaAllocationCreateInfo allocInfo = {};
-    allocInfo.usage                   = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
-
-    Check(vmaCreateImage(pRenderContext->GetAllocator(), &imageInfo, &allocInfo, &albedoImage.image, &albedoImage.imageAllocation, nullptr),
-          "Failed to create dedicated image memory.");
-
-    // Create Image View.
-    // -----------------------------------------------------
-    VkImageViewCreateInfo imageViewInfo = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
-    {
-        imageViewInfo.viewType         = VK_IMAGE_VIEW_TYPE_2D;
-        imageViewInfo.image            = albedoImage.image;
-        imageViewInfo.format           = VK_FORMAT_R8G8B8A8_SRGB;
-        imageViewInfo.components       = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A };
-        imageViewInfo.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0U, 1U, 0U, 1U };
-    }
-    Check(vkCreateImageView(pRenderContext->GetDevice(), &imageViewInfo, nullptr, &albedoImage.imageView), "Failed to create material image view.");
-
-    DebugLabelImageResource(pRenderContext, albedoImage, materialRequest.id.GetName().c_str());
-
-    // Copy Staging -> Device Memory.
-    // -----------------------------------------------------
-
-    VkCommandBuffer vkCommand = VK_NULL_HANDLE;
-    SingleShotCommandBegin(pRenderContext, vkCommand);
-    {
-        VmaAllocationInfo allocationInfo;
-        vmaGetAllocationInfo(pRenderContext->GetAllocator(), albedoImage.imageAllocation, &allocationInfo);
-
-        VulkanColorImageBarrier(pRenderContext,
-                                vkCommand,
-                                albedoImage.image,
-                                VK_IMAGE_LAYOUT_UNDEFINED,
-                                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                                VK_ACCESS_2_NONE,
-                                VK_ACCESS_2_MEMORY_READ_BIT,
-                                VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT_KHR,
-                                VK_PIPELINE_STAGE_2_TRANSFER_BIT);
-
-        VkBufferImageCopy bufferImageCopyInfo;
+        void* pMappedStagingMemory = nullptr;
+        Check(vmaMapMemory(pRenderContext->GetAllocator(), stagingBuffer.bufferAllocation, &pMappedStagingMemory),
+              "Failed to map a pointer to staging memory.");
         {
-            bufferImageCopyInfo.bufferOffset      = 0U;
-            bufferImageCopyInfo.bufferImageHeight = 0U;
-            bufferImageCopyInfo.bufferRowLength   = 0U;
-            bufferImageCopyInfo.imageExtent       = { static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1U };
-            bufferImageCopyInfo.imageOffset       = { 0U, 0U, 0U };
-            bufferImageCopyInfo.imageSubresource  = { VK_IMAGE_ASPECT_COLOR_BIT, 0U, 0U, 1U };
-        }
-        vkCmdCopyBufferToImage(vkCommand, stagingBuffer.buffer, albedoImage.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1U, &bufferImageCopyInfo);
+            // Copy from Host -> Staging memory.
+            memcpy(pMappedStagingMemory, pImageData, channels * width * height); // NOLINT
 
-        VulkanColorImageBarrier(pRenderContext,
-                                vkCommand,
-                                albedoImage.image,
-                                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                                VK_ACCESS_2_NONE,
-                                VK_ACCESS_2_MEMORY_READ_BIT,
-                                VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-                                VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT_KHR);
-    }
-    SingleShotCommandEnd(pRenderContext, vkCommand);
+            vmaUnmapMemory(pRenderContext->GetAllocator(), stagingBuffer.bufferAllocation);
+        }
+
+        stbi_image_free(pImageData);
+
+        // Create dedicate device memory for the image
+        // -----------------------------------------------------
+
+        Check(m_ImageCounter + 1U < kMaxImageResources, "Exceeded the maximum image resources.");
+
+        // Obtain a image resource from the pool.
+        auto* pMaterialImage = &m_ImageResources.at(m_ImageCounter++);
+        CreateSampledImageResource(pRenderContext, pMaterialImage, width, height);
+
+        // Copy Staging -> Device Memory.
+        // -----------------------------------------------------
+
+        VkCommandBuffer vkCommand = VK_NULL_HANDLE;
+        SingleShotCommandBegin(pRenderContext, vkCommand);
+        {
+            VmaAllocationInfo allocationInfo;
+            vmaGetAllocationInfo(pRenderContext->GetAllocator(), pMaterialImage->imageAllocation, &allocationInfo);
+
+            VulkanColorImageBarrier(pRenderContext,
+                                    vkCommand,
+                                    pMaterialImage->image,
+                                    VK_IMAGE_LAYOUT_UNDEFINED,
+                                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                    VK_ACCESS_2_NONE,
+                                    VK_ACCESS_2_MEMORY_READ_BIT,
+                                    VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT_KHR,
+                                    VK_PIPELINE_STAGE_2_TRANSFER_BIT);
+
+            VkBufferImageCopy bufferImageCopyInfo;
+            {
+                bufferImageCopyInfo.bufferOffset      = 0U;
+                bufferImageCopyInfo.bufferImageHeight = height;
+                bufferImageCopyInfo.bufferRowLength   = width;
+                bufferImageCopyInfo.imageExtent       = { static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1U };
+                bufferImageCopyInfo.imageOffset       = { 0U, 0U, 0U };
+                bufferImageCopyInfo.imageSubresource  = { VK_IMAGE_ASPECT_COLOR_BIT, 0U, 0U, 1U };
+            }
+
+            vkCmdCopyBufferToImage(vkCommand,
+                                   stagingBuffer.buffer,
+                                   pMaterialImage->image,
+                                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                   1U,
+                                   &bufferImageCopyInfo);
+
+            VulkanColorImageBarrier(pRenderContext,
+                                    vkCommand,
+                                    pMaterialImage->image,
+                                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                    VK_ACCESS_2_NONE,
+                                    VK_ACCESS_2_MEMORY_READ_BIT,
+                                    VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                                    VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT_KHR);
+        }
+        SingleShotCommandEnd(pRenderContext, vkCommand);
+
+        return *pMaterialImage;
+    };
+
+    pMaterial->albedo    = TryCreateImage(materialRequest.imagePathAlbedo);
+    pMaterial->normal    = TryCreateImage(materialRequest.imagePathNormal);
+    pMaterial->metallic  = TryCreateImage(materialRequest.imagePathMetallic);
+    pMaterial->roughness = TryCreateImage(materialRequest.imagePathRoughness);
 }
 
 void ResourceRegistry::ProcessMeshRequest(RenderContext*                       pRenderContext,
@@ -147,7 +176,7 @@ void ResourceRegistry::ProcessMeshRequest(RenderContext*                       p
 {
     spdlog::info("Processing Mesh Request for {}", meshRequest.id.GetName());
 
-    auto CreateMeshBuffer = [&](const void* pData, uint32_t dataSize, VkBufferUsageFlags usage)
+    auto CreateMeshBuffer = [&](const void* pData, uint32_t dataSize, VkBufferUsageFlags usage) -> Buffer
     {
         // Create dedicate device memory for the mesh buffer.
         // -----------------------------------------------------
@@ -159,10 +188,10 @@ void ResourceRegistry::ProcessMeshRequest(RenderContext*                       p
         VmaAllocationCreateInfo allocInfo = {};
         allocInfo.usage                   = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
 
+        Check(m_BufferCounter + 1U < kMaxBufferResources, "Exceeded the maximum buffer resources.");
+
         // Obtain a buffer resource from the pool.
         auto* pMeshBuffer = &m_BufferResources.at(m_BufferCounter++);
-
-        Check(m_BufferCounter < kMaxBufferResources, "Exceeded the maximum buffer resources.");
 
         Check(vmaCreateBuffer(pRenderContext->GetAllocator(), &bufferInfo, &allocInfo, &pMeshBuffer->buffer, &pMeshBuffer->bufferAllocation, nullptr),
               "Failed to create dedicated buffer memory.");
@@ -270,8 +299,8 @@ void ResourceRegistry::_Commit()
     {
         auto materialRequest = m_PendingMaterialRequests.front();
 
-        // const uint64_t& i = 1U * materialRequest.first;
-        // ProcessMaterialRequest(m_RenderContext, materialRequest.second, stagingBuffer, m_ImageResources.at(i + 0U));
+        // Convert the material request into material resources
+        ProcessMaterialRequest(m_RenderContext, materialRequest, stagingBuffer, &m_MaterialResourceMap[materialRequest.id.GetHash()]);
 
         m_PendingMaterialRequests.pop();
     }
@@ -313,69 +342,12 @@ bool ResourceRegistry::GetMeshResources(uint64_t resourceHandle, MeshResources& 
     return true;
 }
 
-bool ResourceRegistry::GetMaterialResources(uint64_t resourceHandle, VkDescriptorSet& descriptorSet)
+bool ResourceRegistry::GetMaterialResources(uint64_t resourceHandle, MaterialResources& materialResources)
 {
-    if (resourceHandle > m_DescriptorSets.size())
+    if (!m_MaterialResourceMap.contains(resourceHandle))
         return false;
 
-    descriptorSet = m_DescriptorSets[resourceHandle];
+    materialResources = m_MaterialResourceMap[resourceHandle];
 
-    return descriptorSet != VK_NULL_HANDLE;
-}
-
-static bool s_BuiltDescriptors = false;
-
-void ResourceRegistry::TryRebuildMaterialDescriptors(RenderContext* pRenderContext, VkDescriptorSetLayout vkDescriptorSetLayout)
-{
-    if (s_BuiltDescriptors)
-        return;
-
-    // First nuke the descriptor pool.
-    vkResetDescriptorPool(pRenderContext->GetDevice(), pRenderContext->GetDescriptorPool(), 0x0);
-
-    // Clear the sets.
-    m_DescriptorSets.resize(m_ImageResources.size());
-
-    // Due to Vulkan API design need to fill a list of the same set layout for each set.
-    std::vector<VkDescriptorSetLayout> descriptorSetLayout(m_ImageResources.size(), vkDescriptorSetLayout);
-
-    VkDescriptorSetAllocateInfo descriptorSetAllocationInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
-    {
-        descriptorSetAllocationInfo.descriptorPool = pRenderContext->GetDescriptorPool();
-        descriptorSetAllocationInfo.descriptorSetCount =
-            static_cast<uint32_t>(m_ImageResources.size()); // WARNING: This is temporary while 1 image = 1 set.
-        descriptorSetAllocationInfo.pSetLayouts = descriptorSetLayout.data();
-    }
-    Check(vkAllocateDescriptorSets(pRenderContext->GetDevice(), &descriptorSetAllocationInfo, m_DescriptorSets.data()),
-          "Failed to allocate material descriptors.");
-
-    // Update the descriptor sets.
-    std::vector<VkWriteDescriptorSet> descriptorSetWrites;
-
-    for (uint32_t imageIndex = 0U; imageIndex < m_ImageResources.size(); imageIndex++)
-    {
-        if (m_ImageResources.at(imageIndex).imageView == VK_NULL_HANDLE)
-            continue;
-
-        VkDescriptorImageInfo descriptorImageInfo;
-        {
-            descriptorImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            descriptorImageInfo.imageView   = m_ImageResources.at(imageIndex).imageView;
-            descriptorImageInfo.sampler     = VK_NULL_HANDLE;
-        }
-
-        VkWriteDescriptorSet writeInfo = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
-        {
-            writeInfo.descriptorType  = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-            writeInfo.descriptorCount = 1U;
-            writeInfo.dstBinding      = 0U;
-            writeInfo.dstSet          = m_DescriptorSets.at(imageIndex);
-            writeInfo.pImageInfo      = &descriptorImageInfo;
-        }
-        descriptorSetWrites.push_back(writeInfo);
-    }
-
-    vkUpdateDescriptorSets(pRenderContext->GetDevice(), static_cast<uint32_t>(descriptorSetWrites.size()), descriptorSetWrites.data(), 0U, nullptr);
-
-    s_BuiltDescriptors = true;
+    return true;
 }

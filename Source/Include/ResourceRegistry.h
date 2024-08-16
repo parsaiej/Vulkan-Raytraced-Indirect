@@ -38,6 +38,14 @@ public:
         Buffer texCoords;
     };
 
+    struct MaterialResources
+    {
+        Image albedo;
+        Image normal;
+        Image metallic;
+        Image roughness;
+    };
+
     // Queues a GPU-upload request for vertex and index mesh buffers.
     inline uint64_t PushMeshRequest(MeshRequest meshRequest)
     {
@@ -52,9 +60,7 @@ public:
     }
 
     bool GetMeshResources(uint64_t resourceHandle, MeshResources& meshResources);
-    bool GetMaterialResources(uint64_t resourceHandle, VkDescriptorSet& descriptorSet);
-
-    void TryRebuildMaterialDescriptors(RenderContext* pRenderContext, VkDescriptorSetLayout vkDescriptorSetLayout);
+    bool GetMaterialResources(uint64_t resourceHandle, MaterialResources& materialResources);
 
     explicit ResourceRegistry(RenderContext* pRenderContext);
 
@@ -74,16 +80,13 @@ private:
     std::array<Buffer, kMaxBufferResources> m_BufferResources;
     std::array<Image, kMaxImageResources>   m_ImageResources;
 
-    void SyncDescriptorSets(RenderContext*                               pRenderContext,
-                            const std::array<Image, kMaxImageResources>& imageResources,
-                            std::vector<VkDescriptorSet>&                descriptorSets);
-
     RenderContext* m_RenderContext;
 
     std::queue<MeshRequest>     m_PendingMeshRequests;
     std::queue<MaterialRequest> m_PendingMaterialRequests;
 
-    std::map<uint64_t, MeshResources> m_MeshResourceMap;
+    std::map<uint64_t, MeshResources>     m_MeshResourceMap;
+    std::map<uint64_t, MaterialResources> m_MaterialResourceMap;
 
     // Descriptor Sets
     std::vector<VkDescriptorSet> m_DescriptorSets;
@@ -92,6 +95,11 @@ private:
                             const ResourceRegistry::MeshRequest& meshRequest,
                             Buffer&                              stagingBuffer,
                             ResourceRegistry::MeshResources*     pMesh);
+
+    void ProcessMaterialRequest(RenderContext*                           pRenderContext,
+                                const ResourceRegistry::MaterialRequest& materialRequest,
+                                Buffer&                                  stagingBuffer,
+                                ResourceRegistry::MaterialResources*     pMaterial);
 };
 
 #endif

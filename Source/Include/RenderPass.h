@@ -38,6 +38,8 @@ private:
     VkDescriptorSetLayout m_DescriptorSetLayout = VK_NULL_HANDLE;
     VkPipelineLayout      m_PipelineLayout      = VK_NULL_HANDLE;
 
+    std::unordered_map<uint64_t, VkDescriptorSet> m_MaterialDescriptors;
+
     std::unordered_map<ShaderID, VkShaderEXT> m_ShaderMap;
 };
 
