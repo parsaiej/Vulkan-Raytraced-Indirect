@@ -296,7 +296,11 @@ void RenderContext::Dispatch(const std::function<void(FrameParams)>& commandsFun
                                     m_VKSwapchainImageViews[vkCurrentSwapchainImageIndex],
                                     deltaTime.count() };
 
+        PROFILE_START("Process Frame");
+
         commandsFunc(frameParams);
+
+        PROFILE_END;
 
         // Close command recording.
         Check(vkEndCommandBuffer(vkCurrentCommandBuffer), "Failed to close frame command buffer for recording");

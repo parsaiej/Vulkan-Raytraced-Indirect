@@ -26,6 +26,13 @@
 #include <fstream>
 #include <intrin.h>
 
+// Superluminal Includes (If enabled)
+// ---------------------------------------------------------
+
+#ifdef USE_SUPERLUMINAL
+#include <Superluminal/PerformanceAPI.h>
+#endif
+
 // LivePP Includes (If enabled)
 // ---------------------------------------------------------
 

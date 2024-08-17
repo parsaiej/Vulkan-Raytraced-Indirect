@@ -47,6 +47,17 @@ inline void Check(bool a, const char* b)
 
 #endif
 
+// Profile Macro
+// ---------------------------------------------------------
+
+#ifdef USE_SUPERLUMINAL
+#define PROFILE_START(x) PerformanceAPI_BeginEvent(x, nullptr, PERFORMANCEAPI_MAKE_COLOR(255, 150, 0)) // NOLINT
+#define PROFILE_END      PerformanceAPI_EndEvent()
+#else
+#define PROFILE_START(x)
+#define PROFILE_END
+#endif
+
 // Common parameters pushed to all shaders.
 // ---------------------------------------------------------
 
@@ -54,6 +65,7 @@ struct PushConstants
 {
     GfMatrix4f MatrixM;
     GfMatrix4f MatrixVP;
+    GfMatrix4f MatrixV;
 };
 
 // Layout of the standard Vertex for this application.

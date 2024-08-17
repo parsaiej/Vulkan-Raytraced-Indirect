@@ -13,6 +13,11 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# Options
+# --------------------------------
+
+option(USE_SUPERLUMINAL "" ON)
+
 # Check for the USD Installation Environment variable
 # --------------------------------
 
@@ -30,6 +35,17 @@ elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
     endif()
 endif()
 
+# Configure Superluminal Performance
+# --------------------------------
+
+if (${USE_SUPERLUMINAL})
+    if (NOT DEFINED ENV{SUPERLUMINAL_API_DIR})
+        message(FATAL_ERROR "\nSuperluminal option was enabled but environment variable SUPERLUMINAL_API_DIR was not set.")
+    endif()
+
+    set(SuperluminalAPI_DIR $ENV{SUPERLUMINAL_API_DIR})
+endif()
+
 # Packages
 # --------------------------------
 
@@ -42,6 +58,11 @@ find_package(tinyobjloader         REQUIRED)
 find_package(glm                   REQUIRED)
 find_package(OpenGL                REQUIRED)
 find_package(pxr                   REQUIRED)
+
+if (${USE_SUPERLUMINAL})
+    # Warning: Superluminal ships with file named FindSuperluminalAPI.cmake, it needs to be renamed to SuperluminalAPIConfig.cmake.
+    find_package(SuperluminalAPI REQUIRED)
+endif()
 
 # Executable
 # --------------------------------
@@ -83,10 +104,19 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     ${PXR_LIBRARIES}
 )
 
+if (${USE_SUPERLUMINAL})
+    target_link_libraries(${PROJECT_NAME} PRIVATE SuperluminalAPI)
+endif()
+
+
 # Defines
 # --------------------------------
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE _SILENCE_CXX20_OLD_SHARED_PTR_ATOMIC_SUPPORT_DEPRECATION_WARNING)
+
+if (${USE_SUPERLUMINAL})
+    target_compile_definitions(${PROJECT_NAME} PRIVATE USE_SUPERLUMINAL)
+endif()
 
 # LivePP Configuration
 # --------------------------------

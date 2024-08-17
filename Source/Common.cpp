@@ -363,6 +363,7 @@ void GetVertexInputLayout(std::vector<VkVertexInputBindingDescription2EXT>& bind
 
 void NameVulkanObject(VkDevice vkLogicalDevice, VkObjectType vkObjectType, uint64_t vkObject, const std::string& vkObjectName)
 {
+#ifdef _DEBUG
     VkDebugUtilsObjectNameInfoEXT attachmentNameInfo = { VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT };
 
     attachmentNameInfo.pObjectName  = vkObjectName.c_str();
@@ -370,6 +371,7 @@ void NameVulkanObject(VkDevice vkLogicalDevice, VkObjectType vkObjectType, uint6
     attachmentNameInfo.objectHandle = vkObject;
 
     vkSetDebugUtilsObjectNameEXT(vkLogicalDevice, &attachmentNameInfo);
+#endif
 }
 
 void VulkanColorImageBarrier(RenderContext*        pRenderContext,

@@ -45,6 +45,30 @@ ResourceRegistry::ResourceRegistry(RenderContext* pRenderContext) : m_RenderCont
     auto* pDefaultImage = &m_ImageResources.at(m_ImageCounter++);
     CreateSampledImageResource(pRenderContext, pDefaultImage, 4U, 4U);
     DebugLabelImageResource(pRenderContext, *pDefaultImage, "Default Material Image");
+
+    // Create default buffer.
+    auto* pDefaultBuffer = &m_BufferResources.at(m_BufferCounter++);
+
+    {
+        VkBufferCreateInfo bufferInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+        bufferInfo.size               = 16U;
+        bufferInfo.usage              = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+
+        VmaAllocationCreateInfo allocInfo = {};
+        allocInfo.usage                   = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+
+        Check(m_BufferCounter + 1U < kMaxBufferResources, "Exceeded the maximum buffer resources.");
+
+        Check(vmaCreateBuffer(pRenderContext->GetAllocator(),
+                              &bufferInfo,
+                              &allocInfo,
+                              &pDefaultBuffer->buffer,
+                              &pDefaultBuffer->bufferAllocation,
+                              nullptr),
+              "Failed to create dedicated buffer memory.");
+    }
+
+    DebugLabelBufferResource(pRenderContext, *pDefaultBuffer, "Default Mesh Buffer");
 }
 
 // Local utility for emplacing an alpha value every 12 bytes.
@@ -192,6 +216,9 @@ void ResourceRegistry::ProcessMeshRequest(RenderContext*                       p
 
     auto CreateMeshBuffer = [&](const void* pData, uint32_t dataSize, VkBufferUsageFlags usage) -> Buffer
     {
+        if (pData == nullptr)
+            return m_BufferResources[0];
+
         // Create dedicate device memory for the mesh buffer.
         // -----------------------------------------------------
 
@@ -295,6 +322,8 @@ void ResourceRegistry::_Commit()
     // Commit Mesh Requests
     // ----------------------------------------------------------
 
+    PROFILE_START("Process Mesh Requests");
+
     while (!m_PendingMeshRequests.empty())
     {
         auto meshRequest = m_PendingMeshRequests.front();
@@ -306,8 +335,12 @@ void ResourceRegistry::_Commit()
         m_PendingMeshRequests.pop();
     }
 
+    PROFILE_END;
+
     // Commit Material Requests
     // -----------------------------------------------------------
+
+    PROFILE_START("Process Material Requests");
 
     while (!m_PendingMaterialRequests.empty())
     {
@@ -318,6 +351,8 @@ void ResourceRegistry::_Commit()
 
         m_PendingMaterialRequests.pop();
     }
+
+    PROFILE_END;
 
     // Release staging memory.
     vmaDestroyBuffer(m_RenderContext->GetAllocator(), stagingBuffer.buffer, stagingBuffer.bufferAllocation);

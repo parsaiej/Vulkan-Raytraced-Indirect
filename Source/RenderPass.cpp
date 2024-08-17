@@ -298,28 +298,32 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
 
     // Update camera matrices.
     m_PushConstants.MatrixVP = GfMatrix4f(renderPassState->GetWorldToViewMatrix()) * GfMatrix4f(renderPassState->GetProjectionMatrix());
+    m_PushConstants.MatrixV  = GfMatrix4f(renderPassState->GetWorldToViewMatrix());
+
+    PROFILE_START("Record Mesh Rendering Commands");
 
     for (const auto& pMesh : pScene->GetMeshList())
     {
         ResourceRegistry::MeshResources mesh;
         pResources->GetMeshResources(pMesh->GetResourceHandle(), mesh);
 
-        if (pMesh->GetMaterialHash() != UINT_MAX)
-        {
-            auto* pMaterialDescriptor = &m_MaterialDescriptors[pMesh->GetMaterialHash()];
-
-            if (*pMaterialDescriptor == VK_NULL_HANDLE)
-            {
-                ResourceRegistry::MaterialResources material;
-                pResources->GetMaterialResources(pMesh->GetMaterialHash(), material);
-
-                // Build the descriptor if it doesn't exit.
-                CreateMaterialDescriptor(pRenderContext, m_DefaultSampler, material, m_DescriptorSetLayout, pMaterialDescriptor);
-            }
-
-            // Bind material.
-            vkCmdBindDescriptorSets(pFrame->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_PipelineLayout, 0U, 1U, pMaterialDescriptor, 0U, nullptr);
-        }
+        //        if (pMesh->GetMaterialHash() != UINT_MAX)
+        //        {
+        //            auto* pMaterialDescriptor = &m_MaterialDescriptors[pMesh->GetMaterialHash()];
+        //
+        //            if (*pMaterialDescriptor == VK_NULL_HANDLE)
+        //            {
+        //                ResourceRegistry::MaterialResources material;
+        //                pResources->GetMaterialResources(pMesh->GetMaterialHash(), material);
+        //
+        //                // Build the descriptor if it doesn't exit.
+        //                CreateMaterialDescriptor(pRenderContext, m_DefaultSampler, material, m_DescriptorSetLayout, pMaterialDescriptor);
+        //            }
+        //
+        //            // Bind material.
+        //            vkCmdBindDescriptorSets(pFrame->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_PipelineLayout, 0U, 1U, pMaterialDescriptor, 0U,
+        //            nullptr);
+        //        }
 
         VmaAllocationInfo allocationInfo;
         vmaGetAllocationInfo(pRenderContext->GetAllocator(), mesh.indices.bufferAllocation, &allocationInfo);
@@ -336,6 +340,8 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
 
         vkCmdDrawIndexed(pFrame->cmd, static_cast<uint32_t>(allocationInfo.size) / sizeof(uint32_t), 1U, 0U, 0U, 0U);
     }
+
+    PROFILE_END;
 
     vkCmdEndRendering(pFrame->cmd);
 

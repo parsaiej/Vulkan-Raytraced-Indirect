@@ -12,6 +12,8 @@ void Mesh::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParams, H
     if ((*pDirtyBits & HdChangeTracker::AllSceneDirtyBits) == 0U)
         return;
 
+    PROFILE_START("Process Mesh");
+
     std::lock_guard<std::mutex> renderContextLock(m_Owner->GetRenderContextMutex());
 
     SdfPath id = GetId();
@@ -33,6 +35,8 @@ void Mesh::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParams, H
     meshUtil.ComputeTriangleIndices(&pIndexList, &trianglePrimitiveParams);
 
     // Triangule the texture coordinate prim vars.
+    // TODO(parsa): Support "Face Varying" primvars. Currently we promote every to "Vertex" in Houdini to fix problems.
+
     // {
     //     HdVtBufferSource pTexcoordSource(TfToken("TextureCoordinateSource"),
     //                                      VtValue(pSceneDelegate->Get(id, TfToken("primvars:st")).Get<VtVec2fArray>()));
@@ -60,6 +64,8 @@ void Mesh::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParams, H
 
     // Clear the dirty bits.
     *pDirtyBits &= ~HdChangeTracker::AllSceneDirtyBits;
+
+    PROFILE_END;
 }
 
 HdDirtyBits Mesh::_PropagateDirtyBits(HdDirtyBits bits) const { return bits; }
