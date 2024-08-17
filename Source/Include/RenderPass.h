@@ -39,8 +39,9 @@ private:
     VkPipelineLayout      m_PipelineLayout      = VK_NULL_HANDLE;
 
     std::unordered_map<uint64_t, VkDescriptorSet> m_MaterialDescriptors;
+    std::unordered_map<ShaderID, VkShaderEXT>     m_ShaderMap;
 
-    std::unordered_map<ShaderID, VkShaderEXT> m_ShaderMap;
+    VkSampler m_DefaultSampler;
 };
 
 #endif

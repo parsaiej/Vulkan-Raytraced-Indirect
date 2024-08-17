@@ -66,9 +66,22 @@ bool CreateRenderingAttachments(RenderContext* pRenderContext, Image& colorAttac
 
 bool CreatePhysicallyBasedMaterialDescriptorLayout(const VkDevice& vkLogicalDevice, VkDescriptorSetLayout& vkDescriptorSetLayout)
 {
-    std::array<VkDescriptorSetLayoutBinding, 1> vkDescriptorSetLayoutBindings = {
-        // Albedo only for now.
-        { { 0U, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1U, VK_SHADER_STAGE_FRAGMENT_BIT, VK_NULL_HANDLE } }
+    std::array<VkDescriptorSetLayoutBinding, 5U> vkDescriptorSetLayoutBindings = {
+
+        // Albedo
+        VkDescriptorSetLayoutBinding(0U, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1U, VK_SHADER_STAGE_FRAGMENT_BIT, VK_NULL_HANDLE),
+
+        // Normal
+        VkDescriptorSetLayoutBinding(1U, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1U, VK_SHADER_STAGE_FRAGMENT_BIT, VK_NULL_HANDLE),
+
+        // Metallic
+        VkDescriptorSetLayoutBinding(2U, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1U, VK_SHADER_STAGE_FRAGMENT_BIT, VK_NULL_HANDLE),
+
+        // Roughness
+        VkDescriptorSetLayoutBinding(3U, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1U, VK_SHADER_STAGE_FRAGMENT_BIT, VK_NULL_HANDLE),
+
+        // Sampler
+        VkDescriptorSetLayoutBinding(4U, VK_DESCRIPTOR_TYPE_SAMPLER, 1U, VK_SHADER_STAGE_FRAGMENT_BIT, VK_NULL_HANDLE)
     };
 
     VkDescriptorSetLayoutCreateInfo vkDescriptorSetLayoutInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };

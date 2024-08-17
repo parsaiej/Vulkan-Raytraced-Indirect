@@ -13,7 +13,7 @@ void CreateSampledImageResource(RenderContext* pRenderContext, Image* pImage, ui
     imageInfo.arrayLayers       = 1U;
     imageInfo.mipLevels         = 1U;
     imageInfo.samples           = VK_SAMPLE_COUNT_1_BIT;
-    imageInfo.tiling            = VK_IMAGE_TILING_LINEAR;
+    imageInfo.tiling            = VK_IMAGE_TILING_OPTIMAL;
     imageInfo.extent            = { static_cast<uint32_t>(imageWidth), static_cast<uint32_t>(imageHeight), 1U };
     imageInfo.flags             = 0x0;
     imageInfo.usage             = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
@@ -44,6 +44,7 @@ ResourceRegistry::ResourceRegistry(RenderContext* pRenderContext) : m_RenderCont
     // Create default image.
     auto* pDefaultImage = &m_ImageResources.at(m_ImageCounter++);
     CreateSampledImageResource(pRenderContext, pDefaultImage, 4U, 4U);
+    DebugLabelImageResource(pRenderContext, *pDefaultImage, "Default Material Image");
 }
 
 // Local utility for emplacing an alpha value every 12 bytes.
@@ -53,10 +54,21 @@ void InterleaveImageAlpha(stbi_uc** pImageData, int& width, int& height, int& ch
 
     for (int i = 0; i < width * height; ++i)
     {
-        pAlphaImage[i * 4 + 0] = (*pImageData)[i * 3 + 0]; // NOLINT R
-        pAlphaImage[i * 4 + 1] = (*pImageData)[i * 3 + 1]; // NOLINT G
-        pAlphaImage[i * 4 + 2] = (*pImageData)[i * 3 + 2]; // NOLINT B
-        pAlphaImage[i * 4 + 3] = 255;                      // NOLINT A (fully opaque)
+        switch (channels)
+        {
+            case 1U:
+                pAlphaImage[i * 4 + 0] = (*pImageData)[i * channels + 0]; // NOLINT R
+                pAlphaImage[i * 4 + 1] = (*pImageData)[i * channels + 0]; // NOLINT G
+                pAlphaImage[i * 4 + 2] = (*pImageData)[i * channels + 0]; // NOLINT B
+                break;
+            case 3U:
+                pAlphaImage[i * 4 + 0] = (*pImageData)[i * channels + 0]; // NOLINT R
+                pAlphaImage[i * 4 + 1] = (*pImageData)[i * channels + 1]; // NOLINT G
+                pAlphaImage[i * 4 + 2] = (*pImageData)[i * channels + 2]; // NOLINT B
+                break;
+        }
+
+        pAlphaImage[i * 4 + 3] = 255; // NOLINT A (fully opaque)
     }
 
     // Free the original image memory
@@ -75,7 +87,7 @@ void ResourceRegistry::ProcessMaterialRequest(RenderContext*                    
 {
     spdlog::info("Processing Material Request for {}", materialRequest.id.GetName());
 
-    auto TryCreateImage = [&](const SdfAssetPath& imageResourcePath) -> Image
+    auto TryCreateImage = [&](const SdfAssetPath& imageResourcePath, const char* debugName) -> Image
     {
         if (imageResourcePath.GetResolvedPath().empty())
             return m_ImageResources[0]; // The first image is the default one.
@@ -85,7 +97,7 @@ void ResourceRegistry::ProcessMaterialRequest(RenderContext*                    
         int   channels   = 0;
         auto* pImageData = stbi_load(imageResourcePath.GetResolvedPath().c_str(), &width, &height, &channels, 0U);
 
-        if (channels == 3U)
+        if (channels != 4U)
             InterleaveImageAlpha(&pImageData, width, height, channels);
 
         // Copy Host -> Staging Memory.
@@ -134,8 +146,8 @@ void ResourceRegistry::ProcessMaterialRequest(RenderContext*                    
             VkBufferImageCopy bufferImageCopyInfo;
             {
                 bufferImageCopyInfo.bufferOffset      = 0U;
-                bufferImageCopyInfo.bufferImageHeight = height;
-                bufferImageCopyInfo.bufferRowLength   = width;
+                bufferImageCopyInfo.bufferImageHeight = 0U;
+                bufferImageCopyInfo.bufferRowLength   = 0U;
                 bufferImageCopyInfo.imageExtent       = { static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1U };
                 bufferImageCopyInfo.imageOffset       = { 0U, 0U, 0U };
                 bufferImageCopyInfo.imageSubresource  = { VK_IMAGE_ASPECT_COLOR_BIT, 0U, 0U, 1U };
@@ -160,13 +172,15 @@ void ResourceRegistry::ProcessMaterialRequest(RenderContext*                    
         }
         SingleShotCommandEnd(pRenderContext, vkCommand);
 
+        DebugLabelImageResource(pRenderContext, *pMaterialImage, std::format("{} - {}", materialRequest.id.GetText(), debugName).c_str());
+
         return *pMaterialImage;
     };
 
-    pMaterial->albedo    = TryCreateImage(materialRequest.imagePathAlbedo);
-    pMaterial->normal    = TryCreateImage(materialRequest.imagePathNormal);
-    pMaterial->metallic  = TryCreateImage(materialRequest.imagePathMetallic);
-    pMaterial->roughness = TryCreateImage(materialRequest.imagePathRoughness);
+    pMaterial->albedo    = TryCreateImage(materialRequest.imagePathAlbedo, "Albedo");
+    pMaterial->normal    = TryCreateImage(materialRequest.imagePathNormal, "Normal");
+    pMaterial->metallic  = TryCreateImage(materialRequest.imagePathMetallic, "Metallic");
+    pMaterial->roughness = TryCreateImage(materialRequest.imagePathRoughness, "Roughness");
 }
 
 void ResourceRegistry::ProcessMeshRequest(RenderContext*                       pRenderContext,

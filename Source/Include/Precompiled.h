@@ -66,6 +66,8 @@
 #include <pxr/imaging/hd/rendererPluginRegistry.h>
 #include <pxr/imaging/hd/resourceRegistry.h>
 #include <pxr/imaging/hd/task.h>
+#include <pxr/imaging/hd/types.h>
+#include <pxr/imaging/hd/vtBufferSource.h>
 
 // MaterialX Support.
 #include <pxr/imaging/hdMtlx/hdMtlx.h>

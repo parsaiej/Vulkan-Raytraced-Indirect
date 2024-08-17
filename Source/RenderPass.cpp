@@ -112,6 +112,19 @@ RenderPass::RenderPass(HdRenderIndex* pRenderIndex, const HdRprimCollection& col
     // ------------------------------------------------
 
     m_PushConstants = {};
+
+    // Create default sampler.
+    // ------------------------------------------------
+
+    VkSamplerCreateInfo defaultSamplerInfo = { VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
+    {
+        defaultSamplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        defaultSamplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        defaultSamplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    }
+    vkCreateSampler(pRenderContext->GetDevice(), &defaultSamplerInfo, nullptr, &m_DefaultSampler);
+
+    NameVulkanObject(pRenderContext->GetDevice(), VK_OBJECT_TYPE_SAMPLER, reinterpret_cast<uint64_t>(m_DefaultSampler), "Default Sampler");
 }
 
 RenderPass::~RenderPass()
@@ -132,9 +145,12 @@ RenderPass::~RenderPass()
 
     for (auto& shader : m_ShaderMap)
         vkDestroyShaderEXT(pRenderContext->GetDevice(), shader.second, nullptr);
+
+    vkDestroySampler(pRenderContext->GetDevice(), m_DefaultSampler, nullptr);
 }
 
 void CreateMaterialDescriptor(RenderContext*                      pRenderContext,
+                              VkSampler                           defaultSampler,
                               ResourceRegistry::MaterialResources materialResources,
                               VkDescriptorSetLayout               vkDescriptorSetLayout,
                               VkDescriptorSet*                    pDescriptorSet)
@@ -149,22 +165,47 @@ void CreateMaterialDescriptor(RenderContext*                      pRenderContext
           "Failed to allocate material descriptors.");
 
     // Update the descriptor sets.
-    std::vector<VkWriteDescriptorSet> descriptorSetWrites;
+    std::vector<VkDescriptorImageInfo> descriptorImageInfos;
+    std::vector<VkWriteDescriptorSet>  descriptorSetWrites;
 
-    VkDescriptorImageInfo descriptorImageInfo;
+    // Import to note invalidate the back() pointer as we push images.
+    descriptorImageInfos.reserve(4U);
+
+    auto PushSampledImage = [&](const Image& sampledImage)
     {
-        descriptorImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        descriptorImageInfo.imageView   = materialResources.albedo.imageView;
-        descriptorImageInfo.sampler     = VK_NULL_HANDLE; // TODO
+        descriptorImageInfos.push_back(VkDescriptorImageInfo(VK_NULL_HANDLE, sampledImage.imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
+
+        VkWriteDescriptorSet writeInfo = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+        {
+            writeInfo.descriptorType  = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+            writeInfo.descriptorCount = 1U;
+            writeInfo.dstBinding      = static_cast<uint32_t>(descriptorSetWrites.size());
+            writeInfo.dstSet          = *pDescriptorSet;
+            writeInfo.pImageInfo      = &descriptorImageInfos.back();
+        }
+        descriptorSetWrites.push_back(writeInfo);
+    };
+
+    // WARNING: Match the layout defined in Common::CreatePhysicallyBasedMaterialDescriptorLayout
+    PushSampledImage(materialResources.albedo);
+    PushSampledImage(materialResources.normal);
+    PushSampledImage(materialResources.metallic);
+    PushSampledImage(materialResources.roughness);
+
+    // Also push the sampler.
+
+    VkDescriptorImageInfo descriptorSamplerInfo;
+    {
+        descriptorSamplerInfo.sampler = defaultSampler;
     }
 
     VkWriteDescriptorSet writeInfo = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
     {
-        writeInfo.descriptorType  = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+        writeInfo.descriptorType  = VK_DESCRIPTOR_TYPE_SAMPLER;
         writeInfo.descriptorCount = 1U;
-        writeInfo.dstBinding      = 0U;
+        writeInfo.dstBinding      = static_cast<uint32_t>(descriptorSetWrites.size());
         writeInfo.dstSet          = *pDescriptorSet;
-        writeInfo.pImageInfo      = &descriptorImageInfo;
+        writeInfo.pImageInfo      = &descriptorSamplerInfo;
     }
     descriptorSetWrites.push_back(writeInfo);
 
@@ -273,7 +314,7 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
                 pResources->GetMaterialResources(pMesh->GetMaterialHash(), material);
 
                 // Build the descriptor if it doesn't exit.
-                CreateMaterialDescriptor(pRenderContext, material, m_DescriptorSetLayout, pMaterialDescriptor);
+                CreateMaterialDescriptor(pRenderContext, m_DefaultSampler, material, m_DescriptorSetLayout, pMaterialDescriptor);
             }
 
             // Bind material.

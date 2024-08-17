@@ -16,16 +16,11 @@ void Mesh::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParams, H
 
     SdfPath id = GetId();
 
-    // Set debug color
-    {
-        m_DebugColor = { 1.0F, 0.0F, 0.0F };
-    }
-
     // Extract pointers to data lists for the mesh.
     auto pPointList    = pSceneDelegate->Get(id, HdTokens->points).Get<VtVec3fArray>();
     auto pNormalList   = pSceneDelegate->Get(id, HdTokens->normals).Get<VtVec3fArray>();
-    auto pTexcoordList = pSceneDelegate->Get(id, TfToken("primvars:st")).Get<VtVec2fArray>();
-    auto pIndexList    = VtVec3iArray();
+    auto pTexcoordList = pSceneDelegate->Get(id, TfToken("primvars:st")).Get<VtVec2fArray>(); // Will be generated
+    auto pIndexList    = VtVec3iArray();                                                      // Will be generated
 
     // Compute the triangulated indices from the mesh topology.
     HdMeshTopology topology = pSceneDelegate->GetMeshTopology(id);
@@ -36,6 +31,18 @@ void Mesh::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParams, H
     // Reconstruct the indices / mesh topology.
     VtIntArray trianglePrimitiveParams;
     meshUtil.ComputeTriangleIndices(&pIndexList, &trianglePrimitiveParams);
+
+    // Triangule the texture coordinate prim vars.
+    // {
+    //     HdVtBufferSource pTexcoordSource(TfToken("TextureCoordinateSource"),
+    //                                      VtValue(pSceneDelegate->Get(id, TfToken("primvars:st")).Get<VtVec2fArray>()));
+
+    //     Check(meshUtil.ComputeTriangulatedFaceVaryingPrimvar(pTexcoordSource.GetData(),
+    //                                                          static_cast<int>(pTexcoordSource.GetNumElements()),
+    //                                                          pTexcoordSource.GetTupleType().type,
+    //                                                          &pTexcoordList),
+    //           "Failed to triangulate texture coordinate list.");
+    // }
 
     // Obtain the resource registry.
     auto pResourceRegistry = std::static_pointer_cast<ResourceRegistry>(pSceneDelegate->GetRenderIndex().GetResourceRegistry());
