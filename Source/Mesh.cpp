@@ -12,7 +12,7 @@ void Mesh::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParams, H
     if ((*pDirtyBits & HdChangeTracker::AllSceneDirtyBits) == 0U)
         return;
 
-    PROFILE_START("Process Mesh");
+    PROFILE_START("Sync Mesh");
 
     std::lock_guard<std::mutex> renderContextLock(m_Owner->GetRenderContextMutex());
 

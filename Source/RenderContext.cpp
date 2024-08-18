@@ -25,7 +25,8 @@ RenderContext::RenderContext(uint32_t width, uint32_t height)
 
     std::vector<const char*> requiredInstanceLayers;
 #ifdef _DEBUG
-    requiredInstanceLayers.push_back("VK_LAYER_KHRONOS_validation");
+    // Just use the Vulkan Configurator for now.
+    // requiredInstanceLayers.push_back("VK_LAYER_KHRONOS_validation");
 #endif
 
     uint32_t windowExtensionCount = 0U;
@@ -214,6 +215,43 @@ RenderContext::RenderContext(uint32_t width, uint32_t height)
 
     m_Scene = std::make_unique<Scene>();
 
+    // Configure Imgui
+    // ------------------------------------------------
+
+    /*
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+
+    ImGuiIO& io = ImGui::GetIO();
+    (void)io;
+
+    ImGui::StyleColorsDark();
+
+    ImGui_ImplGlfw_InitForVulkan(m_Window, true);
+
+    VkPipelineRenderingCreateInfo pipelineRenderingInfo = { VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO };
+
+    std::vector<VkFormat> colorFormats(1U, VK_FORMAT_R8G8B8A8_UNORM);
+    pipelineRenderingInfo.colorAttachmentCount    = static_cast<uint32_t>(colorFormats.size());
+    pipelineRenderingInfo.pColorAttachmentFormats = colorFormats.data();
+
+    ImGui_ImplVulkan_InitInfo imguiVulkanInitInfo = {};
+    {
+        imguiVulkanInitInfo.Instance                    = m_VKInstance;
+        imguiVulkanInitInfo.PhysicalDevice              = m_VKDevicePhysical;
+        imguiVulkanInitInfo.Device                      = m_VKDeviceLogical;
+        imguiVulkanInitInfo.QueueFamily                 = m_VKCommandQueueIndex;
+        imguiVulkanInitInfo.Queue                       = m_VKCommandQueue;
+        imguiVulkanInitInfo.DescriptorPool              = m_VKDescriptorPool;
+        imguiVulkanInitInfo.MinImageCount               = static_cast<uint32_t>(m_VKSwapchainImages.size()) - 1;
+        imguiVulkanInitInfo.ImageCount                  = static_cast<uint32_t>(m_VKSwapchainImages.size());
+        imguiVulkanInitInfo.MSAASamples                 = VK_SAMPLE_COUNT_1_BIT;
+        imguiVulkanInitInfo.UseDynamicRendering         = VK_TRUE;
+        imguiVulkanInitInfo.PipelineRenderingCreateInfo = pipelineRenderingInfo;
+    }
+    ImGui_ImplVulkan_Init(&imguiVulkanInitInfo);
+    */
+
     // Done.
     // ------------------------------------------------
 
@@ -301,6 +339,46 @@ void RenderContext::Dispatch(const std::function<void(FrameParams)>& commandsFun
         commandsFunc(frameParams);
 
         PROFILE_END;
+
+        // Draw Imgui.
+        /*
+        {
+            ImGui_ImplVulkan_NewFrame();
+            ImGui_ImplGlfw_NewFrame();
+            ImGui::NewFrame();
+
+            // Dispatch UI commands
+            ImGui::ShowDemoWindow();
+
+            ImGui::Render();
+
+            VkRenderingAttachmentInfo colorAttachmentInfo = { VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
+            {
+                colorAttachmentInfo.loadOp      = VK_ATTACHMENT_LOAD_OP_LOAD;
+                colorAttachmentInfo.storeOp     = VK_ATTACHMENT_STORE_OP_STORE;
+                colorAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+                colorAttachmentInfo.imageView   = m_VKSwapchainImageViews[vkCurrentSwapchainImageIndex];
+            }
+
+            VkRenderingInfo vkRenderingInfo = { VK_STRUCTURE_TYPE_RENDERING_INFO };
+            {
+                vkRenderingInfo.colorAttachmentCount = 1U;
+                vkRenderingInfo.pColorAttachments    = &colorAttachmentInfo;
+                vkRenderingInfo.pDepthAttachment     = VK_NULL_HANDLE;
+                vkRenderingInfo.pStencilAttachment   = VK_NULL_HANDLE;
+                vkRenderingInfo.layerCount           = 1U;
+                vkRenderingInfo.renderArea           = {
+                    {            0,             0 },
+                    { kWindowWidth, kWindowHeight }
+                };
+            }
+            vkCmdBeginRendering(vkCurrentCommandBuffer, &vkRenderingInfo);
+
+            ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), vkCurrentCommandBuffer);
+
+            vkCmdEndRendering(vkCurrentCommandBuffer);
+        }
+        */
 
         // Close command recording.
         Check(vkEndCommandBuffer(vkCurrentCommandBuffer), "Failed to close frame command buffer for recording");

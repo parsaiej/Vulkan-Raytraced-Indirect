@@ -3,7 +3,7 @@
 #include <RenderDelegate.h>
 #include <RenderPass.h>
 
-// #define USE_FREE_CAMERA
+#define USE_FREE_CAMERA
 
 // Hydra 2.0 replaced Scene Delegates with Scene Index concept:
 // https://openusd.org/release/api/_page__hydra__getting__started__guide.html
@@ -57,21 +57,10 @@ int main()
 
     PROFILE_START("Load USD Stage");
 
-    // auto pUsdStage = pxr::UsdStage::Open("..\\Assets\\scene.usd");
-    // auto pUsdStage = pxr::UsdStage::Open("..\\Assets\\dragon_scene.usd");
-    auto pUsdStage = pxr::UsdStage::Open("..\\..\\caldera\\caldera.usda");
+    auto pUsdStage = pxr::UsdStage::Open("..\\Assets\\scene.usd");
     TF_VERIFY(pUsdStage != nullptr);
 
     PROFILE_END;
-
-    // Disable useless spheres.
-    pUsdStage->GetPrimAtPath(SdfPath("/players")).SetActive(false);
-
-    // Enable full LOD for beachhead map.
-    //    auto beachheadLod =
-    //        pUsdStage->GetPrimAtPath(SdfPath("/world/mp_wz_island/mp_wz_island_paths/mp_wz_island_geo/map_beachhead")).GetVariantSet("districtLod");
-    //
-    //    beachheadLod.SetVariantSelection("full");
 
 #ifndef USE_HYDRA_SCENE_INDEX
     // Construct a scene delegate from the stock OpenUSD scene delegate
@@ -117,8 +106,7 @@ int main()
 #ifdef USE_FREE_CAMERA
         taskController.SetCameraPath(pFreeCameraSceneDelegate->GetCameraId());
 #else
-        // taskController.SetCameraPath(SdfPath("/cameras/camera1"));
-        taskController.SetCameraPath(SdfPath("/cameras/map_beachhead_overview"));
+        taskController.SetCameraPath(SdfPath("/cameras/camera1"));
 #endif
     }
 

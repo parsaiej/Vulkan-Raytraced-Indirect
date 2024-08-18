@@ -106,6 +106,8 @@ void Material::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParam
     if ((*pDirtyBits & HdChangeTracker::AllSceneDirtyBits) == 0U)
         return;
 
+    PROFILE_START("Sync Material");
+
     std::lock_guard<std::mutex> renderContextLock(m_Owner->GetRenderContextMutex());
 
     auto id = GetId();
@@ -150,4 +152,6 @@ void Material::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParam
 
     // Clear the dirty bits.
     *pDirtyBits &= ~HdChangeTracker::AllSceneDirtyBits;
+
+    PROFILE_END;
 }

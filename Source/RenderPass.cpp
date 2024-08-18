@@ -244,14 +244,13 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
     // Record
     // --------------------------------------------
 
-    VulkanColorImageBarrier(pRenderContext,
-                            pFrame->cmd,
+    VulkanColorImageBarrier(pFrame->cmd,
                             m_ColorAttachment.image,
-                            VK_IMAGE_LAYOUT_UNDEFINED,
+                            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                            VK_ACCESS_2_NONE,
+                            VK_ACCESS_2_MEMORY_READ_BIT,
                             VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-                            VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+                            VK_PIPELINE_STAGE_2_TRANSFER_BIT,
                             VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT);
 
     VkRenderingInfo vkRenderingInfo = { VK_STRUCTURE_TYPE_RENDERING_INFO };
@@ -307,23 +306,22 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
         ResourceRegistry::MeshResources mesh;
         pResources->GetMeshResources(pMesh->GetResourceHandle(), mesh);
 
-        //        if (pMesh->GetMaterialHash() != UINT_MAX)
-        //        {
-        //            auto* pMaterialDescriptor = &m_MaterialDescriptors[pMesh->GetMaterialHash()];
-        //
-        //            if (*pMaterialDescriptor == VK_NULL_HANDLE)
-        //            {
-        //                ResourceRegistry::MaterialResources material;
-        //                pResources->GetMaterialResources(pMesh->GetMaterialHash(), material);
-        //
-        //                // Build the descriptor if it doesn't exit.
-        //                CreateMaterialDescriptor(pRenderContext, m_DefaultSampler, material, m_DescriptorSetLayout, pMaterialDescriptor);
-        //            }
-        //
-        //            // Bind material.
-        //            vkCmdBindDescriptorSets(pFrame->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_PipelineLayout, 0U, 1U, pMaterialDescriptor, 0U,
-        //            nullptr);
-        //        }
+        if (pMesh->GetMaterialHash() != UINT_MAX)
+        {
+            auto* pMaterialDescriptor = &m_MaterialDescriptors[pMesh->GetMaterialHash()];
+
+            if (*pMaterialDescriptor == VK_NULL_HANDLE)
+            {
+                ResourceRegistry::MaterialResources material;
+                pResources->GetMaterialResources(pMesh->GetMaterialHash(), material);
+
+                // Build the descriptor if it doesn't exit.
+                CreateMaterialDescriptor(pRenderContext, m_DefaultSampler, material, m_DescriptorSetLayout, pMaterialDescriptor);
+            }
+
+            // Bind material.
+            vkCmdBindDescriptorSets(pFrame->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_PipelineLayout, 0U, 1U, pMaterialDescriptor, 0U, nullptr);
+        }
 
         VmaAllocationInfo allocationInfo;
         vmaGetAllocationInfo(pRenderContext->GetAllocator(), mesh.indices.bufferAllocation, &allocationInfo);
@@ -347,18 +345,16 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
 
     // Copy the internal color attachment to back buffer.
 
-    VulkanColorImageBarrier(pRenderContext,
-                            pFrame->cmd,
+    VulkanColorImageBarrier(pFrame->cmd,
                             m_ColorAttachment.image,
                             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                             VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                            VK_ACCESS_2_NONE,
+                            VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
                             VK_ACCESS_2_MEMORY_READ_BIT,
                             VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
                             VK_PIPELINE_STAGE_2_TRANSFER_BIT);
 
-    VulkanColorImageBarrier(pRenderContext,
-                            pFrame->cmd,
+    VulkanColorImageBarrier(pFrame->cmd,
                             pFrame->backBuffer,
                             VK_IMAGE_LAYOUT_UNDEFINED,
                             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
@@ -382,8 +378,7 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
                    1U,
                    &backBufferCopy);
 
-    VulkanColorImageBarrier(pRenderContext,
-                            pFrame->cmd,
+    VulkanColorImageBarrier(pFrame->cmd,
                             pFrame->backBuffer,
                             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                             VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,

@@ -36,11 +36,6 @@ bool CreateRenderingAttachments(RenderContext* pRenderContext, Image& colorAttac
                              VK_NULL_HANDLE),
               "Failed to create attachment allocation.");
 
-#ifdef _DEBUG
-        auto attachmentName = std::format("{} Attachment", ((imageAspect & VK_IMAGE_ASPECT_COLOR_BIT) != 0U) ? "Color" : "Depth");
-        NameVulkanObject(pRenderContext->GetDevice(), VK_OBJECT_TYPE_IMAGE, reinterpret_cast<uint64_t>(attachment.image), attachmentName);
-#endif
-
         VkImageViewCreateInfo imageViewInfo = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
         {
             imageViewInfo.image                           = attachment.image;
@@ -60,6 +55,25 @@ bool CreateRenderingAttachments(RenderContext* pRenderContext, Image& colorAttac
                      VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
                      VK_IMAGE_ASPECT_COLOR_BIT);
     CreateAttachment(depthAttachment, VK_FORMAT_D32_SFLOAT, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_IMAGE_ASPECT_DEPTH_BIT);
+
+    DebugLabelImageResource(pRenderContext, colorAttachment, "Color Attachment");
+    DebugLabelImageResource(pRenderContext, depthAttachment, "Depth Attachment");
+
+    // Transition the color resource
+
+    VkCommandBuffer cmd = VK_NULL_HANDLE;
+    SingleShotCommandBegin(pRenderContext, cmd);
+
+    VulkanColorImageBarrier(cmd,
+                            colorAttachment.image,
+                            VK_IMAGE_LAYOUT_UNDEFINED,
+                            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                            VK_ACCESS_2_NONE,
+                            VK_ACCESS_2_MEMORY_READ_BIT,
+                            VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+                            VK_PIPELINE_STAGE_2_TRANSFER_BIT);
+
+    SingleShotCommandEnd(pRenderContext, cmd);
 
     return true;
 }
@@ -374,8 +388,7 @@ void NameVulkanObject(VkDevice vkLogicalDevice, VkObjectType vkObjectType, uint6
 #endif
 }
 
-void VulkanColorImageBarrier(RenderContext*        pRenderContext,
-                             VkCommandBuffer       vkCommand,
+void VulkanColorImageBarrier(VkCommandBuffer       vkCommand,
                              VkImage               vkImage,
                              VkImageLayout         vkLayoutOld,
                              VkImageLayout         vkLayoutNew,
@@ -393,8 +406,8 @@ void VulkanColorImageBarrier(RenderContext*        pRenderContext,
         vkImageBarrier.dstAccessMask       = vkAccessDst;
         vkImageBarrier.srcStageMask        = vkStageSrc;
         vkImageBarrier.dstStageMask        = vkStageDst;
-        vkImageBarrier.srcQueueFamilyIndex = pRenderContext->GetCommandQueueIndex();
-        vkImageBarrier.dstQueueFamilyIndex = pRenderContext->GetCommandQueueIndex();
+        vkImageBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        vkImageBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         vkImageBarrier.subresourceRange    = { VK_IMAGE_ASPECT_COLOR_BIT, 0U, 1U, 0U, 1U };
     }
 

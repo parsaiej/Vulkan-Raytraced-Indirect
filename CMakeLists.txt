@@ -64,6 +64,20 @@ if (${USE_SUPERLUMINAL})
     find_package(SuperluminalAPI REQUIRED)
 endif()
 
+# Imgui
+# --------------------------------
+
+set(IMGUI_INC ${CMAKE_SOURCE_DIR}/External/imgui/
+              ${CMAKE_SOURCE_DIR}/External/imgui/backends/)
+
+file(GLOB IMGUI_SRC ${CMAKE_SOURCE_DIR}/External/imgui/imgui.cpp
+                    ${CMAKE_SOURCE_DIR}/External/imgui/imgui_widgets.cpp
+                    ${CMAKE_SOURCE_DIR}/External/imgui/imgui_tables.cpp
+                    ${CMAKE_SOURCE_DIR}/External/imgui/imgui_draw.cpp
+                    ${CMAKE_SOURCE_DIR}/External/imgui/imgui_demo.cpp
+                    ${CMAKE_SOURCE_DIR}/External/imgui/backends/imgui_impl_glfw.cpp
+                    ${CMAKE_SOURCE_DIR}/External/imgui/backends/imgui_impl_vulkan.cpp)
+
 # Executable
 # --------------------------------
 
@@ -78,6 +92,7 @@ add_executable(${PROJECT_NAME}
     Source/Common.cpp
     Source/Material.cpp
     Source/Scene.cpp
+    ${IMGUI_SRC}
 )
 
 target_precompile_headers(${PROJECT_NAME} PRIVATE Source/Include/Precompiled.h)
@@ -89,6 +104,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     Source/Include
     ${Stb_INCLUDE_DIR}
     ${PXR_INCLUDE_DIR}
+    ${IMGUI_INC}
 )
 
 # Link
@@ -108,11 +124,10 @@ if (${USE_SUPERLUMINAL})
     target_link_libraries(${PROJECT_NAME} PRIVATE SuperluminalAPI)
 endif()
 
-
 # Defines
 # --------------------------------
 
-target_compile_definitions(${PROJECT_NAME} PRIVATE _SILENCE_CXX20_OLD_SHARED_PTR_ATOMIC_SUPPORT_DEPRECATION_WARNING)
+target_compile_definitions(${PROJECT_NAME} PRIVATE IMGUI_IMPL_VULKAN_USE_VOLK _SILENCE_CXX20_OLD_SHARED_PTR_ATOMIC_SUPPORT_DEPRECATION_WARNING)
 
 if (${USE_SUPERLUMINAL})
     target_compile_definitions(${PROJECT_NAME} PRIVATE USE_SUPERLUMINAL)

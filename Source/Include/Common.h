@@ -143,8 +143,7 @@ void DebugLabelImageResource(RenderContext* pRenderContext, const Image& imageRe
 
 void DebugLabelBufferResource(RenderContext* pRenderContext, const Buffer& bufferResource, const char* labelName);
 
-void VulkanColorImageBarrier(RenderContext*        pRenderContext,
-                             VkCommandBuffer       vkCommand,
+void VulkanColorImageBarrier(VkCommandBuffer       vkCommand,
                              VkImage               vkImage,
                              VkImageLayout         vkLayoutOld,
                              VkImageLayout         vkLayoutNew,

@@ -148,6 +148,8 @@ void ResourceRegistry::ProcessMaterialRequest(RenderContext*                    
         auto* pMaterialImage = &m_ImageResources.at(m_ImageCounter++);
         CreateSampledImageResource(pRenderContext, pMaterialImage, width, height);
 
+        DebugLabelImageResource(pRenderContext, *pMaterialImage, std::format("{} - {}", materialRequest.id.GetText(), debugName).c_str());
+
         // Copy Staging -> Device Memory.
         // -----------------------------------------------------
 
@@ -157,13 +159,12 @@ void ResourceRegistry::ProcessMaterialRequest(RenderContext*                    
             VmaAllocationInfo allocationInfo;
             vmaGetAllocationInfo(pRenderContext->GetAllocator(), pMaterialImage->imageAllocation, &allocationInfo);
 
-            VulkanColorImageBarrier(pRenderContext,
-                                    vkCommand,
+            VulkanColorImageBarrier(vkCommand,
                                     pMaterialImage->image,
                                     VK_IMAGE_LAYOUT_UNDEFINED,
                                     VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                                     VK_ACCESS_2_NONE,
-                                    VK_ACCESS_2_MEMORY_READ_BIT,
+                                    VK_ACCESS_2_TRANSFER_WRITE_BIT,
                                     VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT_KHR,
                                     VK_PIPELINE_STAGE_2_TRANSFER_BIT);
 
@@ -184,19 +185,16 @@ void ResourceRegistry::ProcessMaterialRequest(RenderContext*                    
                                    1U,
                                    &bufferImageCopyInfo);
 
-            VulkanColorImageBarrier(pRenderContext,
-                                    vkCommand,
+            VulkanColorImageBarrier(vkCommand,
                                     pMaterialImage->image,
                                     VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                                     VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                                    VK_ACCESS_2_NONE,
-                                    VK_ACCESS_2_MEMORY_READ_BIT,
+                                    VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                                    VK_ACCESS_2_SHADER_READ_BIT,
                                     VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-                                    VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT_KHR);
+                                    VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT);
         }
         SingleShotCommandEnd(pRenderContext, vkCommand);
-
-        DebugLabelImageResource(pRenderContext, *pMaterialImage, std::format("{} - {}", materialRequest.id.GetText(), debugName).c_str());
 
         return *pMaterialImage;
     };

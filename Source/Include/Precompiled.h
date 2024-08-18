@@ -40,6 +40,14 @@
 #include <LivePP/API/x64/LPP_API_x64_CPP.h>
 #endif
 
+// Imgui Includes
+// ---------------------------------------------------------
+
+#define IMGUI_DEFINE_MATH_OPERATORS
+#include <imgui.h>
+#include <imgui_impl_glfw.h>
+#include <imgui_impl_vulkan.h>
+
 // GLM Includes
 // ---------------------------------------------------------
 
