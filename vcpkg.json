@@ -6,6 +6,7 @@
     "glfw3",
     "vulkan-memory-allocator",
     "tinyobjloader",
-    "glm"
+    "glm",
+    "directxtk12"
   ]
 }

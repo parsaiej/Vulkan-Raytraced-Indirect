@@ -2,6 +2,7 @@
 #include <RenderContext.h>
 #include <RenderDelegate.h>
 #include <RenderPass.h>
+#include <FreeCamera.h>
 
 #define USE_FREE_CAMERA
 
@@ -92,7 +93,7 @@ int main()
     // Create a free camera.
     // ---------------------
 
-    auto pFreeCameraSceneDelegate = std::make_unique<HdxFreeCameraSceneDelegate>(pRenderIndex, SdfPath("/freeCamera"));
+    FreeCamera freeCamera(pRenderIndex, SdfPath("/freeCamera"), pRenderContext->GetWindow());
 
     // Create the render tasks.
     // ---------------------
@@ -104,7 +105,7 @@ int main()
         taskController.SetRenderViewport({ 0, 0, kWindowWidth, kWindowHeight });
 
 #ifdef USE_FREE_CAMERA
-        taskController.SetCameraPath(pFreeCameraSceneDelegate->GetCameraId());
+        taskController.SetCameraPath(freeCamera.GetCameraId());
 #else
         taskController.SetCameraPath(SdfPath("/cameras/camera1"));
 #endif
@@ -118,12 +119,10 @@ int main()
     // UI
     // ------------------------------------------------
 
-    auto RecordInterface = [&]() { ImGui::ShowDemoWindow(); };
+    auto RecordInterface = [&]() {};
 
     // Command Recording
     // ------------------------------------------------
-
-    float time = 0.0F;
 
     auto RecordCommands = [&](FrameParams frameParams)
     {
@@ -134,45 +133,12 @@ int main()
         pRenderDelegate->SetRenderSetting(kTokenCurrenFrameParams, VtValue(&frameParams));
 
 #ifdef USE_FREE_CAMERA
-        auto WrapMatrix = [](glm::mat4 m)
-        {
-            return GfMatrix4f(m[0][0],
-                              m[0][1],
-                              m[0][2],
-                              m[0][3],
-                              m[1][0],
-                              m[1][1],
-                              m[1][2],
-                              m[1][3],
-                              m[2][0],
-                              m[2][1],
-                              m[2][2],
-                              m[2][3],
-                              m[3][0],
-                              m[3][1],
-                              m[3][2],
-                              m[3][3]);
-        };
-
-        // Define the camera position (eye), target position (center), and up vector
-        glm::vec3 eye    = glm::vec3(0.5f * sin(time), 0.5f, 0.5f * cos(time));
-        glm::vec3 center = glm::vec3(0.0f, 0.0f, 0.0f);
-        glm::vec3 up     = glm::vec3(0.0f, 1.0f, 0.0f);
-
-        // Create the view matrix using glm::lookAt
-        glm::mat4 view = glm::lookAt(eye, center, up);
-        glm::mat4 proj = glm::perspective(45.0f, 16.0f / 9.0f, 0.1f, 100.0f);
-
-        // Manually use GLM since USD's matrix utilities are very bad.
-        // GfMatrix4f::LookAt seems super broken.
-        pFreeCameraSceneDelegate->SetMatrices((GfMatrix4d)WrapMatrix(view), (GfMatrix4d)WrapMatrix(proj));
+        freeCamera.Update(static_cast<float>(frameParams.deltaTime));
 #endif
 
         // Invoke Hydra
         auto renderTasks = taskController.GetRenderingTasks();
         engine.Execute(pRenderIndex, &renderTasks);
-
-        time += static_cast<float>(frameParams.deltaTime);
     };
 
     // Kick off render-loop.

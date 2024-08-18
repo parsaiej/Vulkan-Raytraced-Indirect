@@ -58,6 +58,7 @@ find_package(tinyobjloader         REQUIRED)
 find_package(glm                   REQUIRED)
 find_package(OpenGL                REQUIRED)
 find_package(pxr                   REQUIRED)
+find_package(directxtk12           REQUIRED)
 
 if (${USE_SUPERLUMINAL})
     # Warning: Superluminal ships with file named FindSuperluminalAPI.cmake, it needs to be renamed to SuperluminalAPIConfig.cmake.
@@ -92,6 +93,7 @@ add_executable(${PROJECT_NAME}
     Source/Common.cpp
     Source/Material.cpp
     Source/Scene.cpp
+    Source/FreeCamera.cpp
     ${IMGUI_SRC}
 )
 
@@ -117,6 +119,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     GPUOpen::VulkanMemoryAllocator
     tinyobjloader::tinyobjloader
     glm::glm-header-only
+    Microsoft::DirectXTK12
     ${PXR_LIBRARIES}
 )
 

@@ -69,7 +69,7 @@ bool CreateRenderingAttachments(RenderContext* pRenderContext, Image& colorAttac
                             VK_IMAGE_LAYOUT_UNDEFINED,
                             VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                             VK_ACCESS_2_NONE,
-                            VK_ACCESS_2_MEMORY_READ_BIT,
+                            VK_ACCESS_2_TRANSFER_READ_BIT,
                             VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
                             VK_PIPELINE_STAGE_2_TRANSFER_BIT);
 
@@ -590,4 +590,40 @@ void DrawUserInterface(RenderContext* pRenderContext, uint32_t swapChainImageInd
                             VK_ACCESS_2_MEMORY_READ_BIT,
                             VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
                             VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT);
+}
+
+void UpdateFreeCamera(HdxFreeCameraSceneDelegate* pCameraSceneDelegate)
+{
+    auto WrapMatrix = [](glm::mat4 m)
+    {
+        return GfMatrix4f(m[0][0],
+                          m[0][1],
+                          m[0][2],
+                          m[0][3],
+                          m[1][0],
+                          m[1][1],
+                          m[1][2],
+                          m[1][3],
+                          m[2][0],
+                          m[2][1],
+                          m[2][2],
+                          m[2][3],
+                          m[3][0],
+                          m[3][1],
+                          m[3][2],
+                          m[3][3]);
+    };
+
+    // Define the camera position (eye), target position (center), and up vector
+    glm::vec3 eye    = glm::vec3(0.5F * std::sin(0), 0.5F, 0.5F * std::cos(0));
+    glm::vec3 center = glm::vec3(0.0F, 0.0F, 0.0F);
+    glm::vec3 up     = glm::vec3(0.0F, 1.0F, 0.0F);
+
+    // Create the view matrix using glm::lookAt
+    glm::mat4 view = glm::lookAt(eye, center, up);
+    glm::mat4 proj = glm::perspective(45.0F, 16.0F / 9.0F, 0.1F, 100.0F);
+
+    // Manually use GLM since USD's matrix utilities are very bad.
+    // GfMatrix4f::LookAt seems super broken.
+    pCameraSceneDelegate->SetMatrices(GfMatrix4d(WrapMatrix(view)), GfMatrix4d(WrapMatrix(proj)));
 }

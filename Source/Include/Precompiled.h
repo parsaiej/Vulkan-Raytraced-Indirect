@@ -59,6 +59,18 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/string_cast.hpp>
 
+// DirectX Tool Kit is used for Free Camera.
+// ---------------------------------------------------------
+
+#include <directxtk12/Keyboard.h>
+#include <directxtk12/Mouse.h>
+
+#include <DirectXMath.h>
+#include <SimpleMath.h>
+
+using namespace DirectX;
+using namespace DirectX::SimpleMath;
+
 // OpenUSD Includes
 // ---------------------------------------------------------
 
