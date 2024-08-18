@@ -536,14 +536,14 @@ void InitializeUserInterface(RenderContext* pRenderContext)
     ImGui_ImplVulkan_Init(&imguiVulkanInitInfo);
 }
 
-void DrawUserInterface(RenderContext* pRenderContext, uint32_t swapChainImageIndex, VkCommandBuffer cmd)
+void DrawUserInterface(RenderContext* pRenderContext, uint32_t swapChainImageIndex, VkCommandBuffer cmd, const std::function<void()>& interfaceFunc)
 {
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
     // Dispatch UI commands
-    ImGui::ShowDemoWindow();
+    interfaceFunc();
 
     ImGui::Render();
 

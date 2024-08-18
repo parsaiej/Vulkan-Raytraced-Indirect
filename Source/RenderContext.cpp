@@ -255,7 +255,7 @@ RenderContext::~RenderContext()
     vkDestroyInstance(m_VKInstance, nullptr);
 }
 
-void RenderContext::Dispatch(const std::function<void(FrameParams)>& commandsFunc)
+void RenderContext::Dispatch(const std::function<void(FrameParams)>& commandsFunc, const std::function<void()>& interfaceFunc)
 {
     uint64_t frameIndex = 0U;
 
@@ -312,7 +312,7 @@ void RenderContext::Dispatch(const std::function<void(FrameParams)>& commandsFun
 
         PROFILE_END;
 
-        DrawUserInterface(this, vkCurrentSwapchainImageIndex, vkCurrentCommandBuffer);
+        DrawUserInterface(this, vkCurrentSwapchainImageIndex, vkCurrentCommandBuffer, interfaceFunc);
 
         // Close command recording.
         Check(vkEndCommandBuffer(vkCurrentCommandBuffer), "Failed to close frame command buffer for recording");

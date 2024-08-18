@@ -153,6 +153,6 @@ void VulkanColorImageBarrier(VkCommandBuffer       vkCommand,
                              VkPipelineStageFlags2 vkStageDst);
 
 void InitializeUserInterface(RenderContext* pRenderContext);
-void DrawUserInterface(RenderContext* pRenderContext, uint32_t swapChainImageIndex, VkCommandBuffer cmd);
+void DrawUserInterface(RenderContext* pRenderContext, uint32_t swapChainImageIndex, VkCommandBuffer cmd, const std::function<void()>& interfaceFunc);
 
 #endif

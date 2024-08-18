@@ -115,6 +115,11 @@ int main()
 
     HdEngine engine;
 
+    // UI
+    // ------------------------------------------------
+
+    auto RecordInterface = [&]() { ImGui::ShowDemoWindow(); };
+
     // Command Recording
     // ------------------------------------------------
 
@@ -173,7 +178,7 @@ int main()
     // Kick off render-loop.
     // ------------------------------------------------
 
-    pRenderContext->Dispatch(RecordCommands);
+    pRenderContext->Dispatch(RecordCommands, RecordInterface);
 
     // Progarm is exiting, free GPU memory.
     // ------------------------------------------------

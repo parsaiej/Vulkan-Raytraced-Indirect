@@ -20,7 +20,7 @@ public:
 
     // Dispatch a render loop into the OS window, invoking a provided command recording callback
     // each frame.
-    void Dispatch(const std::function<void(FrameParams)>& commandsFunc);
+    void Dispatch(const std::function<void(FrameParams)>& commandsFunc, const std::function<void()>& interfaceFunc);
 
     inline VkInstance&       GetInstance() { return m_VKInstance; }
     inline VkDevice&         GetDevice() { return m_VKDeviceLogical; }
