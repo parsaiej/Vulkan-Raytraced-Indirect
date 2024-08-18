@@ -498,3 +498,96 @@ void SingleShotCommandEnd(RenderContext* pRenderContext, VkCommandBuffer& vkComm
     // -----------------------------------------------------
     Check(vkDeviceWaitIdle(pRenderContext->GetDevice()), "Failed to wait for commands to finish dispatching.");
 }
+
+void InitializeUserInterface(RenderContext* pRenderContext)
+{
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+
+    ImGuiIO& io = ImGui::GetIO();
+    (void)io;
+
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+
+    ImGui::StyleColorsDark();
+
+    ImGui_ImplGlfw_InitForVulkan(pRenderContext->GetWindow(), true);
+
+    VkPipelineRenderingCreateInfo pipelineRenderingInfo = { VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO };
+
+    std::vector<VkFormat> colorFormats(1U, VK_FORMAT_R8G8B8A8_UNORM);
+    pipelineRenderingInfo.colorAttachmentCount    = static_cast<uint32_t>(colorFormats.size());
+    pipelineRenderingInfo.pColorAttachmentFormats = colorFormats.data();
+
+    ImGui_ImplVulkan_InitInfo imguiVulkanInitInfo = {};
+    {
+        imguiVulkanInitInfo.Instance                    = pRenderContext->GetInstance();
+        imguiVulkanInitInfo.PhysicalDevice              = pRenderContext->GetDevicePhysical();
+        imguiVulkanInitInfo.Device                      = pRenderContext->GetDevice();
+        imguiVulkanInitInfo.QueueFamily                 = pRenderContext->GetCommandQueueIndex();
+        imguiVulkanInitInfo.Queue                       = pRenderContext->GetCommandQueue();
+        imguiVulkanInitInfo.DescriptorPool              = pRenderContext->GetDescriptorPool();
+        imguiVulkanInitInfo.MinImageCount               = 3U;
+        imguiVulkanInitInfo.ImageCount                  = 3U;
+        imguiVulkanInitInfo.MSAASamples                 = VK_SAMPLE_COUNT_1_BIT;
+        imguiVulkanInitInfo.UseDynamicRendering         = VK_TRUE;
+        imguiVulkanInitInfo.PipelineRenderingCreateInfo = pipelineRenderingInfo;
+    }
+    ImGui_ImplVulkan_Init(&imguiVulkanInitInfo);
+}
+
+void DrawUserInterface(RenderContext* pRenderContext, uint32_t swapChainImageIndex, VkCommandBuffer cmd)
+{
+    ImGui_ImplVulkan_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame();
+
+    // Dispatch UI commands
+    ImGui::ShowDemoWindow();
+
+    ImGui::Render();
+
+    VulkanColorImageBarrier(cmd,
+                            pRenderContext->GetSwapchainImage(swapChainImageIndex),
+                            VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                            VK_ACCESS_2_MEMORY_READ_BIT,
+                            VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+                            VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT);
+
+    VkRenderingAttachmentInfo colorAttachmentInfo = { VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
+    {
+        colorAttachmentInfo.loadOp      = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        colorAttachmentInfo.storeOp     = VK_ATTACHMENT_STORE_OP_STORE;
+        colorAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        colorAttachmentInfo.imageView   = pRenderContext->GetSwapchainImageView(swapChainImageIndex);
+    }
+
+    VkRenderingInfo vkRenderingInfo = { VK_STRUCTURE_TYPE_RENDERING_INFO };
+    {
+        vkRenderingInfo.colorAttachmentCount = 1U;
+        vkRenderingInfo.pColorAttachments    = &colorAttachmentInfo;
+        vkRenderingInfo.pDepthAttachment     = VK_NULL_HANDLE;
+        vkRenderingInfo.pStencilAttachment   = VK_NULL_HANDLE;
+        vkRenderingInfo.layerCount           = 1U;
+        vkRenderingInfo.renderArea           = {
+            {            0,             0 },
+            { kWindowWidth, kWindowHeight }
+        };
+    }
+    vkCmdBeginRendering(cmd, &vkRenderingInfo);
+
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
+
+    vkCmdEndRendering(cmd);
+
+    VulkanColorImageBarrier(cmd,
+                            pRenderContext->GetSwapchainImage(swapChainImageIndex),
+                            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                            VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                            VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+                            VK_ACCESS_2_MEMORY_READ_BIT,
+                            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                            VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT);
+}

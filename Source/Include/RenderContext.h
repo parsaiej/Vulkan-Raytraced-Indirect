@@ -22,7 +22,9 @@ public:
     // each frame.
     void Dispatch(const std::function<void(FrameParams)>& commandsFunc);
 
+    inline VkInstance&       GetInstance() { return m_VKInstance; }
     inline VkDevice&         GetDevice() { return m_VKDeviceLogical; }
+    inline VkPhysicalDevice& GetDevicePhysical() { return m_VKDevicePhysical; }
     inline VmaAllocator&     GetAllocator() { return m_VKMemoryAllocator; }
     inline VkQueue&          GetCommandQueue() { return m_VKCommandQueue; }
     inline uint32_t&         GetCommandQueueIndex() { return m_VKCommandQueueIndex; }
@@ -30,6 +32,9 @@ public:
     inline VkDescriptorPool& GetDescriptorPool() { return m_VKDescriptorPool; }
     inline GLFWwindow*       GetWindow() { return m_Window; }
     inline Scene*            GetScene() { return m_Scene.get(); }
+
+    inline const VkImage&     GetSwapchainImage(uint32_t swapChainImageIndex) { return m_VKSwapchainImages.at(swapChainImageIndex); }
+    inline const VkImageView& GetSwapchainImageView(uint32_t swapChainImageIndex) { return m_VKSwapchainImageViews.at(swapChainImageIndex); }
 
 private:
 
