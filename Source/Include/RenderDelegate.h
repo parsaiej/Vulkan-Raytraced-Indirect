@@ -43,8 +43,8 @@ public:
     HdSprim* CreateFallbackSprim(const TfToken& /*typeId*/) override { return nullptr; };
     HdBprim* CreateFallbackBprim(const TfToken& /*typeId*/) override { return nullptr; };
 
-    void DestroyRprim(HdRprim* rPrim) override {};
-    void DestroySprim(HdSprim* sprim) override {};
+    void DestroyRprim(HdRprim* rPrim) override;
+    void DestroySprim(HdSprim* sprim) override;
     void DestroyBprim(HdBprim* bprim) override {};
 
     // IMPORTANT: MaterialX Networks will NOT BE PROCESSED by Hydra unless you specify the context here.

@@ -6,15 +6,62 @@
 
 #define USE_FREE_CAMERA
 
-// Hydra 2.0 replaced Scene Delegates with Scene Index concept:
-// https://openusd.org/release/api/_page__hydra__getting__started__guide.html
-// #define USE_HYDRA_SCENE_INDEX
+// Local Utils
+// ---------------------------------------------------------
+
+// Utility for loading / reloading USD stages.
+void LoadStage(HdRenderIndex* pRenderIndex, std::unique_ptr<UsdImagingDelegate>& pSceneDelegate, UsdStageRefPtr pUsdStage, const char* fileName)
+{
+    // First make sure the stage exists on disk.
+    // ---------------------
+
+    if (!std::filesystem::exists(std::filesystem::path(fileName)))
+    {
+        spdlog::error("The provided file path does not exist.");
+        return;
+    }
+
+    // Load a USD Stage.
+    // ---------------------
+
+    PROFILE_START("Load USD Stage");
+
+    pUsdStage = pxr::UsdStage::Open(fileName);
+    TF_VERIFY(pUsdStage != nullptr);
+
+    PROFILE_END;
+
+    // (Re)-create the scene delegate.
+    // ---------------------
+
+    pSceneDelegate = std::make_unique<UsdImagingDelegate>(pRenderIndex, SdfPath::AbsoluteRootPath());
+    TF_VERIFY(pSceneDelegate != nullptr);
+
+    // Pipe the USD stage into the scene delegate (will create render primitives
+    // in the render delegate).
+    // ---------------------
+
+    PROFILE_START("Populate Hydra Scene Delegate.");
+
+    pSceneDelegate->Populate(pUsdStage->GetPseudoRoot());
+
+    PROFILE_END;
+}
 
 // Executable implementation.
 // ---------------------------------------------------------
 
 int main()
 {
+    // Configure logging.
+    // --------------------------------------
+
+    auto loggerMemory = std::make_shared<std::stringstream>();
+    auto loggerSink   = std::make_shared<spdlog::sinks::ostream_sink_mt>(*loggerMemory);
+    auto logger       = std::make_shared<spdlog::logger>("", loggerSink);
+
+    spdlog::set_default_logger(logger);
+    spdlog::set_pattern("%^[%l] %v%$");
 
 #ifdef USE_LIVEPP
     // Locate the LivePP Agent.
@@ -53,47 +100,20 @@ int main()
     auto* pRenderIndex = HdRenderIndex::New(pRenderDelegate.get(), { &renderContextHydraDriver });
     TF_VERIFY(pRenderIndex != nullptr);
 
-    // Load a USD Stage.
-    // ---------------------
-
-    PROFILE_START("Load USD Stage");
-
-    auto pUsdStage = pxr::UsdStage::Open("..\\Assets\\scene.usd");
-    TF_VERIFY(pUsdStage != nullptr);
-
-    PROFILE_END;
-
-#ifndef USE_HYDRA_SCENE_INDEX
-    // Construct a scene delegate from the stock OpenUSD scene delegate
-    // implementation.
-    // ---------------------
-    auto pSceneDelegate = std::make_unique<UsdImagingDelegate>(pRenderIndex, SdfPath::AbsoluteRootPath());
-    TF_VERIFY(pSceneDelegate != nullptr);
-
-    // Pipe the USD stage into the scene delegate (will create render primitives
-    // in the render delegate).
-    // ---------------------
-
-    PROFILE_START("Populate Hydra Scene Delegate.");
-
-    pSceneDelegate->Populate(pUsdStage->GetPseudoRoot());
-
-    PROFILE_END;
-#else
-    // Construct a scene index from the stock OpenUSD scene index implementation.
-    // ---------------------
-    auto pSceneIndex = UsdImagingStageSceneIndex::New(nullptr);
-
-    pSceneIndex->SetStage(pUsdStage);
-
-    // Insert the scene index into the render index.
-    pRenderIndex->InsertSceneIndex(pSceneIndex, SdfPath(), false);
-#endif
-
     // Create a free camera.
     // ---------------------
 
     FreeCamera freeCamera(pRenderIndex, SdfPath("/freeCamera"), pRenderContext->GetWindow());
+
+    // Empty pointer to a USD stage.
+    // ---------------------
+
+    UsdStageRefPtr pUsdStage;
+
+    // Empty pointer to USD scene delegate.
+    // ---------------------
+
+    std::unique_ptr<UsdImagingDelegate> pSceneDelegate;
 
     // Create the render tasks.
     // ---------------------
@@ -119,7 +139,43 @@ int main()
     // UI
     // ------------------------------------------------
 
-    auto RecordInterface = [&]() {};
+    static char s_USDPath[1024U] = "..\\Assets\\scene.usd"; // NOLINT
+
+    auto RecordInterface = [&]()
+    {
+        ImGui::SetNextWindowSize(ImVec2(0, 0), ImGuiCond_Always);
+        ImGui::SetNextWindowPos(ImVec2(0, 0));
+
+        if (ImGui::Begin("Controls", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar))
+        {
+            ImGui::Text("Stage Path:");
+
+            ImGui::SameLine();
+
+            ImGui::InputText("##", static_cast<char*>(s_USDPath), IM_ARRAYSIZE(s_USDPath));
+
+            ImGui::SameLine();
+
+            if (ImGui::Button("Load"))
+                LoadStage(pRenderIndex, pSceneDelegate, pUsdStage, static_cast<char*>(s_USDPath));
+
+            ImGui::Separator();
+
+            if (ImGui::BeginChild("LogSubWindow", ImVec2(0, 300), 1, ImGuiWindowFlags_HorizontalScrollbar))
+            {
+                ImGui::TextUnformatted(loggerMemory->str().c_str());
+
+                if (ImGui::GetScrollY() >= ImGui::GetScrollMaxY())
+                    ImGui::SetScrollHereY(1.0F);
+            }
+            ImGui::EndChild();
+
+            // Display the FPS in the window
+            ImGui::Text("FPS: %.1f (%.2f ms)", ImGui::GetIO().Framerate, ImGui::GetIO().DeltaTime * 1000.0F);
+
+            ImGui::End();
+        }
+    };
 
     // Command Recording
     // ------------------------------------------------

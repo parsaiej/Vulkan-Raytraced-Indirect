@@ -20,11 +20,14 @@
 /* clang-format on */
 
 #include <spdlog/spdlog.h>
+#include <spdlog/sinks/ostream_sink.h> // For imgui.
+
 #include <stb_image.h>
 #include <tiny_obj_loader.h>
 
 #include <fstream>
 #include <intrin.h>
+#include <filesystem>
 
 // Superluminal Includes (If enabled)
 // ---------------------------------------------------------

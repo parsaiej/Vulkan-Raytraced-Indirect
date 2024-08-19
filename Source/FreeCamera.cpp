@@ -28,7 +28,7 @@ FreeCamera::FreeCamera(HdRenderIndex* renderIndex, const SdfPath& delegateId, GL
     auto* pHwnd = glfwGetWin32Window(pWindow);
 
     // Need to configure callback to get native window events.
-    g_WndProc = (WNDPROC)SetWindowLongPtr(pHwnd, GWLP_WNDPROC, (LONG_PTR)HandleWin32Events);
+    g_WndProc = (WNDPROC)SetWindowLongPtr(pHwnd, GWLP_WNDPROC, (LONG_PTR)HandleWin32Events); // NOLINT
 
     // Store the pointer to this instance in the window's user data
     SetWindowLongPtr(pHwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));

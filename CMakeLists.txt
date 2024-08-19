@@ -139,9 +139,9 @@ endif()
 # LivePP Configuration
 # --------------------------------
 
-if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-    target_compile_options     (${PROJECT_NAME} PRIVATE /Zi /Gm-)
-    target_link_options        (${PROJECT_NAME} PRIVATE /FUNCTIONPADMIN /OPT:NOREF /OPT:NOICF /DEBUG:FULL)
-    target_include_directories (${PROJECT_NAME} PRIVATE External/)
-    target_compile_definitions (${PROJECT_NAME} PRIVATE USE_LIVEPP)
-endif()
+# if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+#     target_compile_options     (${PROJECT_NAME} PRIVATE /Zi /Gm-)
+#     target_link_options        (${PROJECT_NAME} PRIVATE /FUNCTIONPADMIN /OPT:NOREF /OPT:NOICF /DEBUG:FULL)
+#     target_include_directories (${PROJECT_NAME} PRIVATE External/)
+#     target_compile_definitions (${PROJECT_NAME} PRIVATE USE_LIVEPP)
+# endif()

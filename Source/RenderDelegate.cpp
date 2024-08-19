@@ -50,6 +50,9 @@ HdSprim* RenderDelegate::CreateSprim(const TfToken& typeId, const SdfPath& sprim
     return nullptr;
 }
 
+void RenderDelegate::DestroyRprim(HdRprim* rPrim) { spdlog::info("Destroying RPrim."); }
+void RenderDelegate::DestroySprim(HdSprim* sprim) { spdlog::info("Destroying SPrim. {}", sprim->GetId().GetText()); }
+
 void RenderDelegate::CommitResources(HdChangeTracker* pChangeTracker)
 {
     // Upload resources to GPU.
