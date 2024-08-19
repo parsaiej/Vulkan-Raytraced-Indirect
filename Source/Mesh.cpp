@@ -18,11 +18,27 @@ void Mesh::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParams, H
 
     SdfPath id = GetId();
 
-    // Extract pointers to data lists for the mesh.
-    auto pPointList    = pSceneDelegate->Get(id, HdTokens->points).Get<VtVec3fArray>();
-    auto pNormalList   = pSceneDelegate->Get(id, HdTokens->normals).Get<VtVec3fArray>();
-    auto pTexcoordList = pSceneDelegate->Get(id, TfToken("primvars:st")).Get<VtVec2fArray>(); // Will be generated
-    auto pIndexList    = VtVec3iArray();                                                      // Will be generated
+    auto SafeGet = [&]<typename T>(const TfToken& token, T& data)
+    {
+        VtValue pValue = pSceneDelegate->Get(id, token);
+
+        if (!pValue.IsHolding<T>())
+        {
+            data = T();
+            return;
+        }
+
+        data = pValue.Get<T>();
+    };
+
+    ResourceRegistry::MeshRequest meshRequest = { id };
+
+    // Extract pointers to data lists for the mesh. Some might not exist so we check.
+    SafeGet(HdTokens->points, meshRequest.pPoints);
+    SafeGet(HdTokens->normals, meshRequest.pNormals);
+    SafeGet(TfToken("primvars:st"), meshRequest.pTexCoords);
+
+    auto pIndexList = VtVec3iArray();
 
     // Compute the triangulated indices from the mesh topology.
     HdMeshTopology topology = pSceneDelegate->GetMeshTopology(id);
@@ -33,6 +49,8 @@ void Mesh::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParams, H
     // Reconstruct the indices / mesh topology.
     VtIntArray trianglePrimitiveParams;
     meshUtil.ComputeTriangleIndices(&pIndexList, &trianglePrimitiveParams);
+
+    meshRequest.pIndices = pIndexList;
 
     // Triangule the texture coordinate prim vars.
     // TODO(parsa): Support "Face Varying" primvars. Currently we promote every to "Vertex" in Houdini to fix problems.
@@ -48,11 +66,9 @@ void Mesh::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParams, H
     //           "Failed to triangulate texture coordinate list.");
     // }
 
-    // Obtain the resource registry.
-    auto pResourceRegistry = std::static_pointer_cast<ResourceRegistry>(pSceneDelegate->GetRenderIndex().GetResourceRegistry());
-    {
-        m_ResourceHandle = pResourceRegistry->PushMeshRequest({ id, pPointList, pNormalList, pIndexList, pTexcoordList });
-    }
+    // Push request.
+    m_ResourceHandle =
+        std::static_pointer_cast<ResourceRegistry>(pSceneDelegate->GetRenderIndex().GetResourceRegistry())->PushMeshRequest(meshRequest);
 
     // Get the world matrix.
     m_LocalToWorld = GfMatrix4f(pSceneDelegate->GetTransform(id));

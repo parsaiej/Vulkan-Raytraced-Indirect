@@ -212,16 +212,19 @@ void ResourceRegistry::ProcessMeshRequest(RenderContext*                       p
 {
     spdlog::info("Processing Mesh Request for {}", meshRequest.id.GetName());
 
-    auto CreateMeshBuffer = [&](const void* pData, uint32_t dataSize, VkBufferUsageFlags usage) -> Buffer
+    auto CreateMeshBuffer = [&]<typename T>(T dataSource, uint32_t elementStride, VkBufferUsageFlags usage) -> Buffer
     {
-        if (pData == nullptr)
+        if (dataSource.empty())
             return m_BufferResources[0];
+
+        auto data = dataSource.data();
+        auto size = dataSource.size() * elementStride;
 
         // Create dedicate device memory for the mesh buffer.
         // -----------------------------------------------------
 
         VkBufferCreateInfo bufferInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
-        bufferInfo.size               = dataSize;
+        bufferInfo.size               = size;
         bufferInfo.usage              = usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 
         VmaAllocationCreateInfo allocInfo = {};
@@ -243,7 +246,7 @@ void ResourceRegistry::ProcessMeshRequest(RenderContext*                       p
               "Failed to map a pointer to staging memory.");
         {
             // Copy from Host -> Staging memory.
-            memcpy(pMappedData, pData, dataSize);
+            memcpy(pMappedData, data, size);
 
             vmaUnmapMemory(pRenderContext->GetAllocator(), stagingBuffer.bufferAllocation);
         }
@@ -261,7 +264,7 @@ void ResourceRegistry::ProcessMeshRequest(RenderContext*                       p
             {
                 copyInfo.srcOffset = 0U;
                 copyInfo.dstOffset = 0U;
-                copyInfo.size      = dataSize;
+                copyInfo.size      = size;
             }
             vkCmdCopyBuffer(vkCommand, stagingBuffer.buffer, pMeshBuffer->buffer, 1U, &copyInfo);
         }
@@ -270,18 +273,10 @@ void ResourceRegistry::ProcessMeshRequest(RenderContext*                       p
         return *pMeshBuffer;
     };
 
-    pMesh->indices   = CreateMeshBuffer(meshRequest.pIndices.data(),
-                                      sizeof(GfVec3i) * static_cast<uint32_t>(meshRequest.pIndices.size()),
-                                      VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
-    pMesh->positions = CreateMeshBuffer(meshRequest.pPoints.data(),
-                                        sizeof(GfVec3f) * static_cast<uint32_t>(meshRequest.pPoints.size()),
-                                        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-    pMesh->normals   = CreateMeshBuffer(meshRequest.pNormals.data(),
-                                      sizeof(GfVec3f) * static_cast<uint32_t>(meshRequest.pNormals.size()),
-                                      VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-    pMesh->texCoords = CreateMeshBuffer(meshRequest.pTexCoords.data(),
-                                        sizeof(GfVec2f) * static_cast<uint32_t>(meshRequest.pTexCoords.size()),
-                                        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+    pMesh->indices   = CreateMeshBuffer(meshRequest.pIndices, sizeof(GfVec3i), VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+    pMesh->positions = CreateMeshBuffer(meshRequest.pPoints, sizeof(GfVec3f), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+    pMesh->normals   = CreateMeshBuffer(meshRequest.pNormals, sizeof(GfVec3f), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+    pMesh->texCoords = CreateMeshBuffer(meshRequest.pTexCoords, sizeof(GfVec2f), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
 
     // Label the resources.
     DebugLabelBufferResource(pRenderContext, pMesh->indices, std::format("{} - Index", meshRequest.id.GetText()).c_str());
