@@ -212,13 +212,13 @@ void ResourceRegistry::ProcessMeshRequest(RenderContext*                       p
 {
     spdlog::info("Processing Mesh Request for {}", meshRequest.id.GetName());
 
-    auto CreateMeshBuffer = [&]<typename T>(T dataSource, uint32_t elementStride, VkBufferUsageFlags usage) -> Buffer
+    auto CreateMeshBuffer = [&]<typename T>(T dataSource, VkBufferUsageFlags usage) -> Buffer
     {
         if (dataSource.empty())
             return m_BufferResources[0];
 
         auto data = dataSource.data();
-        auto size = dataSource.size() * elementStride;
+        auto size = dataSource.size() * sizeof(dataSource[0]);
 
         // Create dedicate device memory for the mesh buffer.
         // -----------------------------------------------------
@@ -273,10 +273,10 @@ void ResourceRegistry::ProcessMeshRequest(RenderContext*                       p
         return *pMeshBuffer;
     };
 
-    pMesh->indices   = CreateMeshBuffer(meshRequest.pIndices, sizeof(GfVec3i), VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
-    pMesh->positions = CreateMeshBuffer(meshRequest.pPoints, sizeof(GfVec3f), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-    pMesh->normals   = CreateMeshBuffer(meshRequest.pNormals, sizeof(GfVec3f), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-    pMesh->texCoords = CreateMeshBuffer(meshRequest.pTexCoords, sizeof(GfVec2f), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+    pMesh->indices   = CreateMeshBuffer(meshRequest.pIndices, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+    pMesh->positions = CreateMeshBuffer(meshRequest.pPoints, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+    pMesh->normals   = CreateMeshBuffer(meshRequest.pNormals, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+    pMesh->texCoords = CreateMeshBuffer(meshRequest.pTexCoords, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
 
     // Label the resources.
     DebugLabelBufferResource(pRenderContext, pMesh->indices, std::format("{} - Index", meshRequest.id.GetText()).c_str());
