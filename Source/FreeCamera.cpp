@@ -107,7 +107,7 @@ void FreeCamera::Update(float deltaTime)
 void FreeCamera::SyncMatricesToState()
 {
     // Create View Matrix.
-    auto matrixV = glm::lookAt(m_State.position, m_State.target, m_State.up);
+    auto matrixV = glm::lookAt(m_State.position, m_State.position + m_State.target, m_State.up);
 
     // Create Projection Matrix.
     auto matrixP = glm::perspective(m_State.fov, m_State.aspect, m_State.planeN, m_State.planeF);

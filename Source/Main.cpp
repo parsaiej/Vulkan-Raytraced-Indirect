@@ -28,7 +28,7 @@ void LoadStage(HdRenderIndex* pRenderIndex, std::unique_ptr<UsdImagingDelegate>&
 
     PROFILE_START("Load USD Stage");
 
-    spdlog::info("Loading USD Stage at path: {}", fileName);
+    spdlog::info("Parsing stage: {}", fileName);
 
     pUsdStage = pxr::UsdStage::Open(fileName);
     TF_VERIFY(pUsdStage != nullptr);
@@ -54,7 +54,7 @@ void LoadStage(HdRenderIndex* pRenderIndex, std::unique_ptr<UsdImagingDelegate>&
     // Done.
     // ---------------------
 
-    spdlog::info("Successfully loaded USD stage and populated render index.", fileName);
+    spdlog::info("Successfully parsed stage and populated scene delegate.", fileName);
 
     s_StageLoaded.store(true);
 }
@@ -162,6 +162,8 @@ int main()
 
         if (ImGui::Begin("Controls", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar))
         {
+            ImGui::BeginDisabled(s_StageLoaded.load());
+
             ImGui::Text("Stage Path:");
 
             ImGui::SameLine();
@@ -175,6 +177,8 @@ int main()
                 // Offload stage loading to a worker thread.
                 stageLoadingThread = std::jthread([&]() { LoadStage(pRenderIndex, pSceneDelegate, pUsdStage, static_cast<char*>(s_USDPath)); });
             }
+
+            ImGui::EndDisabled();
 
             ImGui::Separator();
 
