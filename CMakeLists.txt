@@ -104,6 +104,7 @@ target_precompile_headers(${PROJECT_NAME} PRIVATE Source/Include/Precompiled.h)
 
 target_include_directories(${PROJECT_NAME} PRIVATE
     Source/Include
+    External/dds_image/include
     ${Stb_INCLUDE_DIR}
     ${PXR_INCLUDE_DIR}
     ${IMGUI_INC}
@@ -130,7 +131,11 @@ endif()
 # Defines
 # --------------------------------
 
-target_compile_definitions(${PROJECT_NAME} PRIVATE IMGUI_IMPL_VULKAN_USE_VOLK _SILENCE_CXX20_OLD_SHARED_PTR_ATOMIC_SUPPORT_DEPRECATION_WARNING)
+target_compile_definitions(${PROJECT_NAME} PRIVATE 
+    IMGUI_IMPL_VULKAN_USE_VOLK 
+    _SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING 
+    _SILENCE_CXX20_OLD_SHARED_PTR_ATOMIC_SUPPORT_DEPRECATION_WARNING
+)
 
 if (${USE_SUPERLUMINAL})
     target_compile_definitions(${PROJECT_NAME} PRIVATE USE_SUPERLUMINAL)

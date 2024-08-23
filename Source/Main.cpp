@@ -139,7 +139,7 @@ int main()
     // UI
     // ------------------------------------------------
 
-    static char s_USDPath[1024U] = "..\\Assets\\dragon_scene.usd"; // NOLINT
+    static char s_USDPath[1024U] = "C:\\Development\\hercules\\cockpit.usd"; // NOLINT
 
     auto RecordInterface = [&]()
     {

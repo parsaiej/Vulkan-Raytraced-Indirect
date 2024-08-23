@@ -3,7 +3,7 @@
 #include <RenderContext.h>
 #include <ResourceRegistry.h>
 
-void CreateSampledImageResource(RenderContext* pRenderContext, Image* pImage, uint32_t imageWidth, uint32_t imageHeight)
+void CreateSampledImageResource(RenderContext* pRenderContext, Image* pImage, uint32_t imageWidth, uint32_t imageHeight, VkFormat imageFormat)
 {
     // Create dedicate device memory for the image
     // -----------------------------------------------------
@@ -17,7 +17,7 @@ void CreateSampledImageResource(RenderContext* pRenderContext, Image* pImage, ui
     imageInfo.extent            = { static_cast<uint32_t>(imageWidth), static_cast<uint32_t>(imageHeight), 1U };
     imageInfo.flags             = 0x0;
     imageInfo.usage             = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-    imageInfo.format            = VK_FORMAT_R8G8B8A8_SRGB;
+    imageInfo.format            = imageFormat;
 
     VmaAllocationCreateInfo allocInfo = {};
     allocInfo.usage                   = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
@@ -43,7 +43,7 @@ ResourceRegistry::ResourceRegistry(RenderContext* pRenderContext) : m_RenderCont
 {
     // Create default image.
     auto* pDefaultImage = &m_ImageResources.at(m_ImageCounter++);
-    CreateSampledImageResource(pRenderContext, pDefaultImage, 4U, 4U);
+    CreateSampledImageResource(pRenderContext, pDefaultImage, 4U, 4U, VK_FORMAT_R8G8B8A8_SRGB);
     DebugLabelImageResource(pRenderContext, *pDefaultImage, "Default Material Image");
 
     // Create default buffer.
@@ -114,15 +114,7 @@ void ResourceRegistry::ProcessMaterialRequest(RenderContext*                    
     auto TryCreateImage = [&](const SdfAssetPath& imageResourcePath, const char* debugName) -> Image
     {
         if (imageResourcePath.GetResolvedPath().empty())
-            return m_ImageResources[0]; // The first image is the default one.
-
-        int   width      = 0;
-        int   height     = 0;
-        int   channels   = 0;
-        auto* pImageData = stbi_load(imageResourcePath.GetResolvedPath().c_str(), &width, &height, &channels, 0U);
-
-        if (channels != 4U)
-            InterleaveImageAlpha(&pImageData, width, height, channels);
+            return m_ImageResources[0];
 
         // Copy Host -> Staging Memory.
         // -----------------------------------------------------
@@ -130,14 +122,46 @@ void ResourceRegistry::ProcessMaterialRequest(RenderContext*                    
         void* pMappedStagingMemory = nullptr;
         Check(vmaMapMemory(pRenderContext->GetAllocator(), stagingBuffer.bufferAllocation, &pMappedStagingMemory),
               "Failed to map a pointer to staging memory.");
-        {
-            // Copy from Host -> Staging memory.
-            memcpy(pMappedStagingMemory, pImageData, channels * width * height); // NOLINT
 
-            vmaUnmapMemory(pRenderContext->GetAllocator(), stagingBuffer.bufferAllocation);
+        int imageWidth  = 0U;
+        int imageHeight = 0U;
+
+        VkFormat imageFormat = VK_FORMAT_UNDEFINED;
+        if (std::filesystem::path(imageResourcePath.GetResolvedPath()).extension().string() == ".dds")
+        {
+            dds::Image imageFile;
+            Check(dds::readFile(imageResourcePath.GetResolvedPath(), &imageFile) == 0U, "Failed to load DDS image to memory.");
+
+            // Read out the image data.
+            imageWidth  = static_cast<int>(imageFile.width);
+            imageHeight = static_cast<int>(imageFile.height);
+
+            uint32_t pixelStrideBytes = dds::getBitsPerPixel(imageFile.format) >> 3U;
+
+            // Copy the stb-loaded image to staging memory. (Zero-mip for now).
+            memcpy(pMappedStagingMemory, imageFile.mipmaps.front().data(), pixelStrideBytes * imageWidth * imageHeight); // NOLINT
+
+            // Hardcode for now...
+            imageFormat = dds::getVulkanFormat(imageFile.format, imageFile.supportsAlpha);
+        }
+        else
+        {
+            int   channels   = 0;
+            auto* pImageData = stbi_load(imageResourcePath.GetResolvedPath().c_str(), &imageWidth, &imageHeight, &channels, 0U);
+
+            if (channels != 4U)
+                InterleaveImageAlpha(&pImageData, imageWidth, imageHeight, channels);
+
+            // Copy the stb-loaded image to staging memory.
+            memcpy(pMappedStagingMemory, pImageData, channels * imageWidth * imageHeight); // NOLINT
+
+            stbi_image_free(pImageData);
+
+            // Hardcode for now...
+            imageFormat = VK_FORMAT_R8G8B8A8_SRGB;
         }
 
-        stbi_image_free(pImageData);
+        vmaUnmapMemory(pRenderContext->GetAllocator(), stagingBuffer.bufferAllocation);
 
         // Create dedicate device memory for the image
         // -----------------------------------------------------
@@ -146,7 +170,7 @@ void ResourceRegistry::ProcessMaterialRequest(RenderContext*                    
 
         // Obtain a image resource from the pool.
         auto* pMaterialImage = &m_ImageResources.at(m_ImageCounter++);
-        CreateSampledImageResource(pRenderContext, pMaterialImage, width, height);
+        CreateSampledImageResource(pRenderContext, pMaterialImage, imageWidth, imageHeight, imageFormat);
 
         DebugLabelImageResource(pRenderContext, *pMaterialImage, std::format("{} - {}", materialRequest.id.GetText(), debugName).c_str());
 
@@ -173,7 +197,7 @@ void ResourceRegistry::ProcessMaterialRequest(RenderContext*                    
                 bufferImageCopyInfo.bufferOffset      = 0U;
                 bufferImageCopyInfo.bufferImageHeight = 0U;
                 bufferImageCopyInfo.bufferRowLength   = 0U;
-                bufferImageCopyInfo.imageExtent       = { static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1U };
+                bufferImageCopyInfo.imageExtent       = { static_cast<uint32_t>(imageWidth), static_cast<uint32_t>(imageHeight), 1U };
                 bufferImageCopyInfo.imageOffset       = { 0U, 0U, 0U };
                 bufferImageCopyInfo.imageSubresource  = { VK_IMAGE_ASPECT_COLOR_BIT, 0U, 0U, 1U };
             }
