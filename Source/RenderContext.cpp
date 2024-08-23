@@ -17,7 +17,7 @@ RenderContext::RenderContext(uint32_t width, uint32_t height)
     Check(glfwVulkanSupported() != 0, "Failed to locate a Vulkan Loader for GLFW.");
 
     VkApplicationInfo vkApplicationInfo  = { VK_STRUCTURE_TYPE_APPLICATION_INFO };
-    vkApplicationInfo.pApplicationName   = "Vulkan-Raytraced-Indirect";
+    vkApplicationInfo.pApplicationName   = "Vulkan Viewport";
     vkApplicationInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
     vkApplicationInfo.pEngineName        = "No Engine";
     vkApplicationInfo.engineVersion      = VK_MAKE_VERSION(0, 0, 0);
@@ -64,6 +64,7 @@ RenderContext::RenderContext(uint32_t width, uint32_t height)
         requiredDeviceExtensions.push_back(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
         requiredDeviceExtensions.push_back(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
         requiredDeviceExtensions.push_back(VK_KHR_RAY_QUERY_EXTENSION_NAME);
+        requiredDeviceExtensions.push_back(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
     }
 
     Check(SelectVulkanPhysicalDevice(m_VKInstance, requiredDeviceExtensions, m_VKDevicePhysical), "Failed to select a Vulkan Physical Device.");
@@ -79,7 +80,7 @@ RenderContext::RenderContext(uint32_t width, uint32_t height)
     // ------------------------------------------------
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    m_Window = glfwCreateWindow(static_cast<int>(width), static_cast<int>(height), "Vulkan Raytraced Indirect", nullptr, nullptr);
+    m_Window = glfwCreateWindow(static_cast<int>(width), static_cast<int>(height), "Vulkan Viewport", nullptr, nullptr);
     Check(m_Window != nullptr, "Failed to create the OS Window.");
     Check(glfwCreateWindowSurface(m_VKInstance, m_Window, nullptr, &m_VKSurface), "Failed to create the Vulkan Surface.");
 
@@ -194,7 +195,7 @@ RenderContext::RenderContext(uint32_t width, uint32_t height)
     vmaVulkanFunctions.vkGetDeviceProcAddr   = vkGetDeviceProcAddr;
 
     VmaAllocatorCreateInfo vmaAllocatorInfo = {};
-    vmaAllocatorInfo.flags                  = VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT;
+    vmaAllocatorInfo.flags                  = VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT | VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
     vmaAllocatorInfo.vulkanApiVersion       = VK_API_VERSION_1_3;
     vmaAllocatorInfo.physicalDevice         = m_VKDevicePhysical;
     vmaAllocatorInfo.device                 = m_VKDeviceLogical;
@@ -234,6 +235,8 @@ RenderContext::RenderContext(uint32_t width, uint32_t height)
 
 RenderContext::~RenderContext()
 {
+    vkDeviceWaitIdle(m_VKDeviceLogical);
+
     ImGui_ImplVulkan_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
@@ -338,6 +341,9 @@ void RenderContext::Dispatch(const std::function<void(FrameParams)>& commandsFun
             vkQueueSubmitInfo.pSignalSemaphores    = &m_VKRenderCompleteSemaphores.at(frameInFlightIndex);
             vkQueueSubmitInfo.pWaitDstStageMask    = &vkWaitStageMask;
         }
+
+        std::lock_guard<std::mutex> commandQueueLock(GetCommandQueueMutex());
+
         Check(vkQueueSubmit(m_VKCommandQueue, 1U, &vkQueueSubmitInfo, m_VKInFlightFences.at(frameInFlightIndex)),
               "Failed to submit commands to the Vulkan Graphics Queue.");
 

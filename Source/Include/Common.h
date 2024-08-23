@@ -133,7 +133,7 @@ void GetVertexInputLayout(std::vector<VkVertexInputBindingDescription2EXT>& bind
 
 bool CreateRenderingAttachments(RenderContext* pRenderContext, Image& colorAttachment, Image& depthAttachment);
 
-void SingleShotCommandBegin(RenderContext* pRenderContext, VkCommandBuffer& vkCommandBuffer);
+void SingleShotCommandBegin(RenderContext* pRenderContext, VkCommandBuffer& vkCommandBuffer, VkCommandPool vkCommandPool = VK_NULL_HANDLE);
 
 void SingleShotCommandEnd(RenderContext* pRenderContext, VkCommandBuffer& vkCommandBuffer);
 

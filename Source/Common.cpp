@@ -52,7 +52,7 @@ bool CreateRenderingAttachments(RenderContext* pRenderContext, Image& colorAttac
 
     CreateAttachment(colorAttachment,
                      VK_FORMAT_R8G8B8A8_UNORM,
-                     VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+                     VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_STORAGE_BIT,
                      VK_IMAGE_ASPECT_COLOR_BIT);
     CreateAttachment(depthAttachment, VK_FORMAT_D32_SFLOAT, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_IMAGE_ASPECT_DEPTH_BIT);
 
@@ -183,16 +183,22 @@ bool CreateVulkanLogicalDevice(const VkPhysicalDevice&         vkPhysicalDevice,
     vkGraphicsQueueCreateInfo.queueCount              = 1U;
     vkGraphicsQueueCreateInfo.pQueuePriorities        = &graphicsQueuePriority;
 
-    VkPhysicalDeviceShaderObjectFeaturesEXT shaderObjectFeature = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_OBJECT_FEATURES_EXT };
-    VkPhysicalDeviceVulkan13Features        vulkan13Features    = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES };
-    VkPhysicalDeviceVulkan12Features        vulkan12Features    = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES };
-    VkPhysicalDeviceVulkan11Features        vulkan11Features    = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES };
-    VkPhysicalDeviceFeatures2               vulkan10Features    = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
+    VkPhysicalDeviceRayQueryFeaturesKHR              rayQueryFeature     = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR };
+    VkPhysicalDeviceRayTracingPipelineFeaturesKHR    rtFeature           = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR };
+    VkPhysicalDeviceAccelerationStructureFeaturesKHR acFeature           = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR };
+    VkPhysicalDeviceShaderObjectFeaturesEXT          shaderObjectFeature = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_OBJECT_FEATURES_EXT };
+    VkPhysicalDeviceVulkan13Features                 vulkan13Features    = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES };
+    VkPhysicalDeviceVulkan12Features                 vulkan12Features    = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES };
+    VkPhysicalDeviceVulkan11Features                 vulkan11Features    = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES };
+    VkPhysicalDeviceFeatures2                        vulkan10Features    = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
 
-    vulkan13Features.pNext = &shaderObjectFeature;
-    vulkan12Features.pNext = &vulkan13Features;
-    vulkan11Features.pNext = &vulkan12Features;
-    vulkan10Features.pNext = &vulkan11Features;
+    rtFeature.pNext           = &rayQueryFeature;
+    acFeature.pNext           = &rtFeature;
+    shaderObjectFeature.pNext = &acFeature;
+    vulkan13Features.pNext    = &shaderObjectFeature;
+    vulkan12Features.pNext    = &vulkan13Features;
+    vulkan11Features.pNext    = &vulkan12Features;
+    vulkan10Features.pNext    = &vulkan11Features;
 
     // Query for supported features.
     vkGetPhysicalDeviceFeatures2(vkPhysicalDevice, &vulkan10Features);
@@ -209,6 +215,9 @@ bool CreateVulkanLogicalDevice(const VkPhysicalDevice&         vkPhysicalDevice,
             return false;
 
         if ((strcmp(requiredExtension, VK_EXT_SHADER_OBJECT_EXTENSION_NAME) == 0) && shaderObjectFeature.shaderObject != VK_TRUE)
+            return false;
+
+        if ((strcmp(requiredExtension, VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME) == 0) && acFeature.accelerationStructure != VK_TRUE)
             return false;
     }
 
@@ -466,14 +475,15 @@ void DebugLabelBufferResource(RenderContext* pRenderContext, const Buffer& buffe
 #endif
 }
 
-void SingleShotCommandBegin(RenderContext* pRenderContext, VkCommandBuffer& vkCommandBuffer)
+void SingleShotCommandBegin(RenderContext* pRenderContext, VkCommandBuffer& vkCommandBuffer, VkCommandPool vkCommandPool)
 {
     VkCommandBufferAllocateInfo vkCommandAllocateInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
     {
         vkCommandAllocateInfo.commandBufferCount = 1U;
-        vkCommandAllocateInfo.commandPool        = pRenderContext->GetCommandPool();
-    }
 
+        // Optionally use provided command pool made from another thread.
+        vkCommandAllocateInfo.commandPool = vkCommandPool != VK_NULL_HANDLE ? vkCommandPool : pRenderContext->GetCommandPool();
+    }
     Check(vkAllocateCommandBuffers(pRenderContext->GetDevice(), &vkCommandAllocateInfo, &vkCommandBuffer), "Failed to created command buffer");
 
     VkCommandBufferBeginInfo vkCommandsBeginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
@@ -492,6 +502,9 @@ void SingleShotCommandEnd(RenderContext* pRenderContext, VkCommandBuffer& vkComm
         vkSubmitInfo.commandBufferCount = 1U;
         vkSubmitInfo.pCommandBuffers    = &vkCommandBuffer;
     }
+
+    std::lock_guard<std::mutex> commandQueueLock(pRenderContext->GetCommandQueueMutex());
+
     Check(vkQueueSubmit(pRenderContext->GetCommandQueue(), 1U, &vkSubmitInfo, VK_NULL_HANDLE), "Failed to submit commands to the graphics queue.");
 
     // Wait for the commands to complete.
@@ -538,6 +551,10 @@ void InitializeUserInterface(RenderContext* pRenderContext)
 
 void DrawUserInterface(RenderContext* pRenderContext, uint32_t swapChainImageIndex, VkCommandBuffer cmd, const std::function<void()>& interfaceFunc)
 {
+    // NOTE: Imgui internally uploads font textures with the given queue which can collide with the resource threads.
+    // So for now just lock the queue....
+    std::lock_guard<std::mutex> queueMutex(pRenderContext->GetCommandQueueMutex());
+
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
@@ -590,40 +607,4 @@ void DrawUserInterface(RenderContext* pRenderContext, uint32_t swapChainImageInd
                             VK_ACCESS_2_MEMORY_READ_BIT,
                             VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
                             VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT);
-}
-
-void UpdateFreeCamera(HdxFreeCameraSceneDelegate* pCameraSceneDelegate)
-{
-    auto WrapMatrix = [](glm::mat4 m)
-    {
-        return GfMatrix4f(m[0][0],
-                          m[0][1],
-                          m[0][2],
-                          m[0][3],
-                          m[1][0],
-                          m[1][1],
-                          m[1][2],
-                          m[1][3],
-                          m[2][0],
-                          m[2][1],
-                          m[2][2],
-                          m[2][3],
-                          m[3][0],
-                          m[3][1],
-                          m[3][2],
-                          m[3][3]);
-    };
-
-    // Define the camera position (eye), target position (center), and up vector
-    glm::vec3 eye    = glm::vec3(0.5F * std::sin(0), 0.5F, 0.5F * std::cos(0));
-    glm::vec3 center = glm::vec3(0.0F, 0.0F, 0.0F);
-    glm::vec3 up     = glm::vec3(0.0F, 1.0F, 0.0F);
-
-    // Create the view matrix using glm::lookAt
-    glm::mat4 view = glm::lookAt(eye, center, up);
-    glm::mat4 proj = glm::perspective(45.0F, 16.0F / 9.0F, 0.1F, 100.0F);
-
-    // Manually use GLM since USD's matrix utilities are very bad.
-    // GfMatrix4f::LookAt seems super broken.
-    pCameraSceneDelegate->SetMatrices(GfMatrix4d(WrapMatrix(view)), GfMatrix4d(WrapMatrix(proj)));
 }

@@ -28,6 +28,7 @@ public:
     inline VmaAllocator&     GetAllocator() { return m_VKMemoryAllocator; }
     inline VkQueue&          GetCommandQueue() { return m_VKCommandQueue; }
     inline uint32_t&         GetCommandQueueIndex() { return m_VKCommandQueueIndex; }
+    inline std::mutex&       GetCommandQueueMutex() { return m_VKCommandQueueMutex; }
     inline VkCommandPool&    GetCommandPool() { return m_VKCommandPool; }
     inline VkDescriptorPool& GetDescriptorPool() { return m_VKDescriptorPool; }
     inline GLFWwindow*       GetWindow() { return m_Window; }
@@ -49,6 +50,9 @@ private:
     VkCommandPool m_VKCommandPool       = VK_NULL_HANDLE;
     VkQueue       m_VKCommandQueue      = VK_NULL_HANDLE;
     uint32_t      m_VKCommandQueueIndex = UINT_MAX;
+
+    // For multi-threaded queue submissions
+    std::mutex m_VKCommandQueueMutex;
 
     // Swapchain Primitives
     VkSwapchainKHR           m_VKSwapchain = VK_NULL_HANDLE;

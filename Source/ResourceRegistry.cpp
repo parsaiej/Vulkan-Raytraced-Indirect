@@ -69,6 +69,16 @@ ResourceRegistry::ResourceRegistry(RenderContext* pRenderContext) : m_RenderCont
     }
 
     DebugLabelBufferResource(pRenderContext, *pDefaultBuffer, "Default Mesh Buffer");
+
+    // Create a command pool for the resource registry (in case of async loading).
+
+    VkCommandPoolCreateInfo vkCommandPoolInfo = { VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO };
+    {
+        vkCommandPoolInfo.queueFamilyIndex = pRenderContext->GetCommandQueueIndex();
+        vkCommandPoolInfo.flags            = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    }
+    Check(vkCreateCommandPool(pRenderContext->GetDevice(), &vkCommandPoolInfo, nullptr, &m_ResourceCreationCommandPool),
+          "Failed to create a Resource Creation Command Pool");
 }
 
 // Local utility for emplacing an alpha value every 12 bytes.
@@ -177,7 +187,7 @@ void ResourceRegistry::ProcessMaterialRequest(RenderContext*                    
         // -----------------------------------------------------
 
         VkCommandBuffer vkCommand = VK_NULL_HANDLE;
-        SingleShotCommandBegin(pRenderContext, vkCommand);
+        SingleShotCommandBegin(pRenderContext, vkCommand, m_ResourceCreationCommandPool);
         {
             VmaAllocationInfo allocationInfo;
             vmaGetAllocationInfo(pRenderContext->GetAllocator(), pMaterialImage->imageAllocation, &allocationInfo);
@@ -278,7 +288,7 @@ void ResourceRegistry::ProcessMeshRequest(RenderContext*                       p
         // -----------------------------------------------------
 
         VkCommandBuffer vkCommand = VK_NULL_HANDLE;
-        SingleShotCommandBegin(pRenderContext, vkCommand);
+        SingleShotCommandBegin(pRenderContext, vkCommand, m_ResourceCreationCommandPool);
         {
             VmaAllocationInfo allocationInfo;
             vmaGetAllocationInfo(pRenderContext->GetAllocator(), pMeshBuffer->bufferAllocation, &allocationInfo);
@@ -308,10 +318,9 @@ void ResourceRegistry::ProcessMeshRequest(RenderContext*                       p
     DebugLabelBufferResource(pRenderContext, pMesh->texCoords, std::format("{} - Texcoord", meshRequest.id.GetText()).c_str());
 }
 
-void ResourceRegistry::_Commit()
+void ResourceRegistry::CommitJob()
 {
-    if (m_PendingMeshRequests.empty())
-        return;
+    m_CommitJobBusy.store(true);
 
     // Create a block of staging buffer memory.
     Buffer stagingBuffer {};
@@ -372,6 +381,19 @@ void ResourceRegistry::_Commit()
 
     // Release staging memory.
     vmaDestroyBuffer(m_RenderContext->GetAllocator(), stagingBuffer.buffer, stagingBuffer.bufferAllocation);
+
+    m_CommitJobBusy.store(false);
+}
+
+void ResourceRegistry::_Commit()
+{
+    if (m_PendingMeshRequests.empty() && m_PendingMaterialRequests.empty())
+        return;
+
+    if (IsBusy())
+        return;
+
+    m_CommitJobThread = std::jthread(&ResourceRegistry::CommitJob, this);
 }
 
 void ResourceRegistry::_GarbageCollect()
@@ -395,6 +417,8 @@ void ResourceRegistry::_GarbageCollect()
 
         vmaDestroyImage(m_RenderContext->GetAllocator(), m_ImageResources.at(imageIndex).image, m_ImageResources.at(imageIndex).imageAllocation);
     }
+
+    vkDestroyCommandPool(m_RenderContext->GetDevice(), m_ResourceCreationCommandPool, nullptr);
 }
 
 bool ResourceRegistry::GetMeshResources(uint64_t resourceHandle, MeshResources& meshResources)

@@ -301,43 +301,51 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
 
     PROFILE_START("Record Mesh Rendering Commands");
 
-    for (const auto& pMesh : pScene->GetMeshList())
+    auto RenderSceneMeshList = [&]()
     {
-        ResourceRegistry::MeshResources mesh;
-        pResources->GetMeshResources(pMesh->GetResourceHandle(), mesh);
-
-        if (pMesh->GetMaterialHash() != UINT_MAX)
+        for (const auto& pMesh : pScene->GetMeshList())
         {
-            auto* pMaterialDescriptor = &m_MaterialDescriptors[pMesh->GetMaterialHash()];
+            ResourceRegistry::MeshResources mesh;
+            if (!pResources->GetMeshResources(pMesh->GetResourceHandle(), mesh))
+                return;
 
-            if (*pMaterialDescriptor == VK_NULL_HANDLE)
+            if (pMesh->GetMaterialHash() != UINT_MAX)
             {
-                ResourceRegistry::MaterialResources material;
-                pResources->GetMaterialResources(pMesh->GetMaterialHash(), material);
+                auto* pMaterialDescriptor = &m_MaterialDescriptors[pMesh->GetMaterialHash()];
 
-                // Build the descriptor if it doesn't exit.
-                CreateMaterialDescriptor(pRenderContext, m_DefaultSampler, material, m_DescriptorSetLayout, pMaterialDescriptor);
+                if (*pMaterialDescriptor == VK_NULL_HANDLE)
+                {
+                    ResourceRegistry::MaterialResources material;
+                    pResources->GetMaterialResources(pMesh->GetMaterialHash(), material);
+
+                    // Build the descriptor if it doesn't exit.
+                    CreateMaterialDescriptor(pRenderContext, m_DefaultSampler, material, m_DescriptorSetLayout, pMaterialDescriptor);
+                }
+
+                // Bind material.
+                vkCmdBindDescriptorSets(pFrame->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_PipelineLayout, 0U, 1U, pMaterialDescriptor, 0U, nullptr);
             }
 
-            // Bind material.
-            vkCmdBindDescriptorSets(pFrame->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_PipelineLayout, 0U, 1U, pMaterialDescriptor, 0U, nullptr);
+            VmaAllocationInfo allocationInfo;
+            vmaGetAllocationInfo(pRenderContext->GetAllocator(), mesh.indices.bufferAllocation, &allocationInfo);
+
+            vkCmdBindIndexBuffer(pFrame->cmd, mesh.indices.buffer, 0U, VK_INDEX_TYPE_UINT32);
+
+            std::array<VkDeviceSize, 3> vertexBufferOffset = { 0U, 0U, 0U };
+            std::array<VkBuffer, 3>     vertexBuffers      = { mesh.positions.buffer, mesh.normals.buffer, mesh.texCoords.buffer };
+
+            vkCmdBindVertexBuffers(pFrame->cmd, 0U, 3U, vertexBuffers.data(), vertexBufferOffset.data());
+
+            m_PushConstants.MatrixM = pMesh->GetLocalToWorld();
+            vkCmdPushConstants(pFrame->cmd, m_PipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0U, sizeof(PushConstants), &m_PushConstants);
+
+            vkCmdDrawIndexed(pFrame->cmd, static_cast<uint32_t>(allocationInfo.size) / sizeof(uint32_t), 1U, 0U, 0U, 0U);
         }
+    };
 
-        VmaAllocationInfo allocationInfo;
-        vmaGetAllocationInfo(pRenderContext->GetAllocator(), mesh.indices.bufferAllocation, &allocationInfo);
-
-        vkCmdBindIndexBuffer(pFrame->cmd, mesh.indices.buffer, 0U, VK_INDEX_TYPE_UINT32);
-
-        std::array<VkDeviceSize, 3> vertexBufferOffset = { 0U, 0U, 0U };
-        std::array<VkBuffer, 3>     vertexBuffers      = { mesh.positions.buffer, mesh.normals.buffer, mesh.texCoords.buffer };
-
-        vkCmdBindVertexBuffers(pFrame->cmd, 0U, 3U, vertexBuffers.data(), vertexBufferOffset.data());
-
-        m_PushConstants.MatrixM = pMesh->GetLocalToWorld();
-        vkCmdPushConstants(pFrame->cmd, m_PipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0U, sizeof(PushConstants), &m_PushConstants);
-
-        vkCmdDrawIndexed(pFrame->cmd, static_cast<uint32_t>(allocationInfo.size) / sizeof(uint32_t), 1U, 0U, 0U, 0U);
-    }
+    // Warning: not really robust yet since the meshes could be added to scene before resource system is kicked off.
+    if (!pResources->IsBusy())
+        RenderSceneMeshList();
 
     PROFILE_END;
 

@@ -62,6 +62,8 @@ public:
     bool GetMeshResources(uint64_t resourceHandle, MeshResources& meshResources);
     bool GetMaterialResources(uint64_t resourceHandle, MaterialResources& materialResources);
 
+    inline bool IsBusy() { return m_CommitJobBusy.load(); }
+
     explicit ResourceRegistry(RenderContext* pRenderContext);
 
 protected:
@@ -70,6 +72,8 @@ protected:
     void _GarbageCollect() override;
 
 private:
+
+    void CommitJob();
 
     uint32_t m_BufferCounter {};
     uint32_t m_ImageCounter {};
@@ -100,6 +104,11 @@ private:
                                 const ResourceRegistry::MaterialRequest& materialRequest,
                                 Buffer&                                  stagingBuffer,
                                 ResourceRegistry::MaterialResources*     pMaterial);
+
+    VkCommandPool m_ResourceCreationCommandPool;
+
+    std::jthread      m_CommitJobThread;
+    std::atomic<bool> m_CommitJobBusy;
 };
 
 #endif
