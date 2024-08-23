@@ -4,10 +4,12 @@
 #include <RenderPass.h>
 #include <FreeCamera.h>
 
-#define USE_FREE_CAMERA
+// #define USE_FREE_CAMERA
 
 // Local Utils
 // ---------------------------------------------------------
+
+std::atomic<bool> s_StageLoaded;
 
 // Utility for loading / reloading USD stages.
 void LoadStage(HdRenderIndex* pRenderIndex, std::unique_ptr<UsdImagingDelegate>& pSceneDelegate, UsdStageRefPtr pUsdStage, const char* fileName)
@@ -25,6 +27,8 @@ void LoadStage(HdRenderIndex* pRenderIndex, std::unique_ptr<UsdImagingDelegate>&
     // ---------------------
 
     PROFILE_START("Load USD Stage");
+
+    spdlog::info("Loading USD Stage at path: {}", fileName);
 
     pUsdStage = pxr::UsdStage::Open(fileName);
     TF_VERIFY(pUsdStage != nullptr);
@@ -46,6 +50,13 @@ void LoadStage(HdRenderIndex* pRenderIndex, std::unique_ptr<UsdImagingDelegate>&
     pSceneDelegate->Populate(pUsdStage->GetPseudoRoot());
 
     PROFILE_END;
+
+    // Done.
+    // ---------------------
+
+    spdlog::info("Successfully loaded USD stage and populated render index.", fileName);
+
+    s_StageLoaded.store(true);
 }
 
 // Executable implementation.
@@ -139,7 +150,10 @@ int main()
     // UI
     // ------------------------------------------------
 
-    static char s_USDPath[1024U] = "C:\\Development\\hercules\\cockpit.usd"; // NOLINT
+    // static char s_USDPath[1024U] = "C:\\Development\\hercules\\cockpit.usd"; // NOLINT
+    static char s_USDPath[1024U] = "..\\Assets\\scene.usd"; // NOLINT
+
+    std::jthread stageLoadingThread;
 
     auto RecordInterface = [&]()
     {
@@ -157,7 +171,10 @@ int main()
             ImGui::SameLine();
 
             if (ImGui::Button("Load"))
-                LoadStage(pRenderIndex, pSceneDelegate, pUsdStage, static_cast<char*>(s_USDPath));
+            {
+                // Offload stage loading to a worker thread.
+                stageLoadingThread = std::jthread([&]() { LoadStage(pRenderIndex, pSceneDelegate, pUsdStage, static_cast<char*>(s_USDPath)); });
+            }
 
             ImGui::Separator();
 
@@ -191,6 +208,10 @@ int main()
 #ifdef USE_FREE_CAMERA
         freeCamera.Update(static_cast<float>(frameParams.deltaTime));
 #endif
+
+        // Defer Hydra execution until a scene is loaded.
+        if (!s_StageLoaded.load())
+            return;
 
         // Invoke Hydra
         auto renderTasks = taskController.GetRenderingTasks();

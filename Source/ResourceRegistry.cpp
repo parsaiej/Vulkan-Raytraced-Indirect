@@ -138,10 +138,9 @@ void ResourceRegistry::ProcessMaterialRequest(RenderContext*                    
 
             uint32_t pixelStrideBytes = dds::getBitsPerPixel(imageFile.format) >> 3U;
 
-            // Copy the stb-loaded image to staging memory. (Zero-mip for now).
+            // Copy the dds image to staging memory. (Zero-mip for now).
             memcpy(pMappedStagingMemory, imageFile.mipmaps.front().data(), pixelStrideBytes * imageWidth * imageHeight); // NOLINT
 
-            // Hardcode for now...
             imageFormat = dds::getVulkanFormat(imageFile.format, imageFile.supportsAlpha);
         }
         else
