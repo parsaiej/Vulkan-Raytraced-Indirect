@@ -78,7 +78,7 @@ private:
     uint32_t m_BufferCounter {};
     uint32_t m_ImageCounter {};
 
-    const static uint32_t kMaxBufferResources = 64U * 8192U;
+    const static uint32_t kMaxBufferResources = 16U * 8192U;
     const static uint32_t kMaxImageResources  = 512U;
 
     std::array<Buffer, kMaxBufferResources> m_BufferResources;

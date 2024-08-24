@@ -183,15 +183,17 @@ bool CreateVulkanLogicalDevice(const VkPhysicalDevice&         vkPhysicalDevice,
     vkGraphicsQueueCreateInfo.queueCount              = 1U;
     vkGraphicsQueueCreateInfo.pQueuePriorities        = &graphicsQueuePriority;
 
-    VkPhysicalDeviceRayQueryFeaturesKHR              rayQueryFeature     = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR };
-    VkPhysicalDeviceRayTracingPipelineFeaturesKHR    rtFeature           = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR };
-    VkPhysicalDeviceAccelerationStructureFeaturesKHR acFeature           = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR };
-    VkPhysicalDeviceShaderObjectFeaturesEXT          shaderObjectFeature = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_OBJECT_FEATURES_EXT };
-    VkPhysicalDeviceVulkan13Features                 vulkan13Features    = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES };
-    VkPhysicalDeviceVulkan12Features                 vulkan12Features    = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES };
-    VkPhysicalDeviceVulkan11Features                 vulkan11Features    = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES };
-    VkPhysicalDeviceFeatures2                        vulkan10Features    = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
+    VkPhysicalDeviceFragmentShaderBarycentricFeaturesKHR baryFeature = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADER_BARYCENTRIC_FEATURES_KHR };
+    VkPhysicalDeviceRayQueryFeaturesKHR                  rayQueryFeature = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR };
+    VkPhysicalDeviceRayTracingPipelineFeaturesKHR        rtFeature       = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR };
+    VkPhysicalDeviceAccelerationStructureFeaturesKHR     acFeature       = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR };
+    VkPhysicalDeviceShaderObjectFeaturesEXT              shaderObjectFeature = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_OBJECT_FEATURES_EXT };
+    VkPhysicalDeviceVulkan13Features                     vulkan13Features    = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES };
+    VkPhysicalDeviceVulkan12Features                     vulkan12Features    = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES };
+    VkPhysicalDeviceVulkan11Features                     vulkan11Features    = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES };
+    VkPhysicalDeviceFeatures2                            vulkan10Features    = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
 
+    rayQueryFeature.pNext     = &baryFeature;
     rtFeature.pNext           = &rayQueryFeature;
     acFeature.pNext           = &rtFeature;
     shaderObjectFeature.pNext = &acFeature;
@@ -218,6 +220,9 @@ bool CreateVulkanLogicalDevice(const VkPhysicalDevice&         vkPhysicalDevice,
             return false;
 
         if ((strcmp(requiredExtension, VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME) == 0) && acFeature.accelerationStructure != VK_TRUE)
+            return false;
+
+        if ((strcmp(requiredExtension, VK_KHR_FRAGMENT_SHADER_BARYCENTRIC_EXTENSION_NAME) == 0) && baryFeature.fragmentShaderBarycentric != VK_TRUE)
             return false;
     }
 

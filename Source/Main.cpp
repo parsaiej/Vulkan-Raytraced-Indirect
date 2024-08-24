@@ -151,16 +151,16 @@ int main()
     // ------------------------------------------------
 
     // static char s_USDPath[1024U] = "C:\\Development\\hercules\\cockpit.usd"; // NOLINT
-    static char s_USDPath[1024U] = "..\\Assets\\scene.usd"; // NOLINT
+    static char s_USDPath[1024U] = "..\\Assets\\chessboard.usd"; // NOLINT
 
     std::jthread stageLoadingThread;
 
     auto RecordInterface = [&]()
     {
-        ImGui::SetNextWindowSize(ImVec2(0, 0), ImGuiCond_Always);
         ImGui::SetNextWindowPos(ImVec2(0, 0));
+        ImGui::SetNextWindowSizeConstraints(ImVec2(0, 0), ImVec2(FLT_MAX, FLT_MAX));
 
-        if (ImGui::Begin("Controls", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar))
+        if (ImGui::Begin("Controls", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_AlwaysAutoResize))
         {
             ImGui::BeginDisabled(s_StageLoaded.load());
 
@@ -182,7 +182,7 @@ int main()
 
             ImGui::Separator();
 
-            if (ImGui::BeginChild("LogSubWindow", ImVec2(0, 300), 1, ImGuiWindowFlags_HorizontalScrollbar))
+            if (ImGui::BeginChild("LogSubWindow", ImVec2(600, 100), 1, ImGuiWindowFlags_HorizontalScrollbar))
             {
                 ImGui::TextUnformatted(loggerMemory->str().c_str());
 

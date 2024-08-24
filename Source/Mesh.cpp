@@ -52,19 +52,34 @@ void Mesh::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParams, H
 
     meshRequest.pIndices = pIndexList;
 
-    // Triangule the texture coordinate prim vars.
-    // TODO(parsa): Support "Face Varying" primvars. Currently we promote every to "Vertex" in Houdini to fix problems.
+    spdlog::info(meshRequest.pPoints.size());
+    spdlog::info(meshRequest.pNormals.size());
+    spdlog::info(meshRequest.pTexCoords.size());
 
-    // {
-    //     HdVtBufferSource pTexcoordSource(TfToken("TextureCoordinateSource"),
-    //                                      VtValue(pSceneDelegate->Get(id, TfToken("primvars:st")).Get<VtVec2fArray>()));
+    // VtVec2fArray resampledST(meshRequest.pPoints.size());
+    {
+        // https://graphics.pixar.com/opensubdiv/docs/subdivision_surfaces.html#face-varying-interpolation-rules
+        //  HdVtBufferSource pTexcoordSource(TfToken("TextureCoordinateSource"),
+        //                                   VtValue(pSceneDelegate->Get(id, TfToken("primvars:st")).Get<VtVec2fArray>()));
+        //
+        //  // Triangule the texture coordinate prim vars.
+        //  VtValue pTriangulatedTexcoord;
+        //  Check(meshUtil.ComputeTriangulatedFaceVaryingPrimvar(pTexcoordSource.GetData(),
+        //                                                       static_cast<int>(pTexcoordSource.GetNumElements()),
+        //                                                       pTexcoordSource.GetTupleType().type,
+        //                                                       &pTriangulatedTexcoord),
+        //        "Failed to triangulate texture coordinate list.");
 
-    //     Check(meshUtil.ComputeTriangulatedFaceVaryingPrimvar(pTexcoordSource.GetData(),
-    //                                                          static_cast<int>(pTexcoordSource.GetNumElements()),
-    //                                                          pTexcoordSource.GetTupleType().type,
-    //                                                          &pTexcoordList),
-    //           "Failed to triangulate texture coordinate list.");
-    // }
+        // for (uint32_t triangleIndex = 0U; triangleIndex < pIndexList.size(); triangleIndex++)
+        // {
+        //     auto& triangle = pIndexList[triangleIndex];
+        //
+        //     for (uint32_t triangleVertexIndex = 0U; triangleVertexIndex < 1U; triangleVertexIndex++)
+        //     {
+        //         resampledST[triangle[triangleVertexIndex]] = meshRequest.pTexCoords[triangleIndex * 3U + triangleVertexIndex];
+        //     }
+        // }
+    }
 
     // Push request.
     m_ResourceHandle =
