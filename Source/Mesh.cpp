@@ -55,6 +55,7 @@ void Mesh::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParams, H
     // in order to be manually sampled based on SV_PrimitiveID and interpolatated with SV_Barycentric. This requires a more
     // robust system that createst vertex bindings / descriptors accordingly but can be worked around for known asset formatting.
 
+    if (pSceneDelegate->Get(id, TfToken("primvars:st")).IsHolding<VtVec2fArray>())
     {
         // https://graphics.pixar.com/opensubdiv/docs/subdivision_surfaces.html#face-varying-interpolation-rules
         HdVtBufferSource pTexcoordSource(TfToken("TextureCoordinateSource"),
