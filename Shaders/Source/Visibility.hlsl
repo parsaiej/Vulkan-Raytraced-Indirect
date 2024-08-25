@@ -1,61 +1,43 @@
+#define SHADER_API_VULKAN
+#include "ShaderLibrary/Common.hlsl"
+
 struct Constants
 {
-    float4x4 _MatrixM;
-    float4x4 _MatrixVP;
-    float4x4 _MatrixV;
-    uint     _HasMaterial;
+    float4x4 _MatrixMVP;
+    uint     _MeshID;
+    uint     _MeshCount;
 };
 [[vk::push_constant]] Constants gConstants;
 
-struct Interpolators
+struct VertexInput
 {
-    float4 positionCS : SV_Position;
-    float3 positionVS : TEXCOORD0;
+    [[vk::location(0)]] float3 positionOS : POSITION;
 };
 
-struct RasterData
+float4 Vert(VertexInput input) : SV_Position
 {
-    float3 barycentric : SV_Barycentrics;
-    uint   primitiveID : SV_PrimitiveID;
-};
-
-[[vk::binding(0u, 0u)]]
-Texture2D _AlbedoImage;
-
-[[vk::binding(1u, 0u)]]
-Texture2D _NormalImage;
-
-[[vk::binding(2u, 0u)]]
-Texture2D _MetallicImage;
-
-[[vk::binding(3u, 0u)]]
-Texture2D _RoughnessImage;
-
-[[vk::binding(4u, 0u)]]
-SamplerState _DefaultSampler;
-
-[[vk::binding(0u, 1u)]]
-ByteAddressBuffer _FaceVaryingTextureCoordinateBuffer;
-
-float3 ComputeScreenSpaceNormal(float3 positionVS) 
-{
-    float3 dx = ddx(positionVS);
-    float3 dy = -ddy(positionVS);
-    return normalize(cross(dx, dy));
+    return mul(gConstants._MatrixMVP, float4(input.positionOS, 1.0));;
 }
 
-float4 Main(Interpolators interpolators, RasterData rasterData) : SV_Target
+/*
+uint Frag(uint primitiveID : SV_PrimitiveID) : SV_Target
 {
-    if (!gConstants._HasMaterial)
-        return float4(0, 0, 0, 1);
+    // Warning: Bad things will happen for index count greater than 1 << 24u. 
+    return gConstants._DrawCallID << 24u | primitiveID;
+}
+*/
 
-    float2 st0 = asfloat(_FaceVaryingTextureCoordinateBuffer.Load2((rasterData.primitiveID * 3U + 0U) << 3U));
-    float2 st1 = asfloat(_FaceVaryingTextureCoordinateBuffer.Load2((rasterData.primitiveID * 3U + 1U) << 3U));
-    float2 st2 = asfloat(_FaceVaryingTextureCoordinateBuffer.Load2((rasterData.primitiveID * 3U + 2U) << 3U));
-    
-    float2 st = rasterData.barycentric.x * st0 + rasterData.barycentric.y * st1 + rasterData.barycentric.z * st2;
 
-    st = float2(st.x, 1.0 - st.y);
+float3 ColorCycle(uint index, uint count)
+{
+	float t = frac(index / (float)count);
 
-    return sqrt(_AlbedoImage.Sample(_DefaultSampler, st));
+	// source: https://www.shadertoy.com/view/4ttfRn
+	float3 c = 3.0 * float3(abs(t - 0.5), t.xx) - float3(1.5, 1.0, 2.0);
+	return 1.0 - c * c;
+}
+
+float4 Frag() : SV_Target
+{
+    return float4(ColorCycle(gConstants._MeshID, gConstants._MeshCount), 1);
 }

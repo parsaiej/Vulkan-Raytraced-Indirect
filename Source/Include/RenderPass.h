@@ -12,6 +12,13 @@ enum ShaderID
     MeshVert
 };
 
+struct VisibilityPushConstants
+{
+    GfMatrix4f MatrixMVP;
+    uint32_t   MeshID;
+    uint32_t   MeshCount;
+};
+
 class RenderPass final : public HdRenderPass
 {
 public:
@@ -30,7 +37,7 @@ private:
     Image m_ColorAttachment {};
     Image m_DepthAttachment {};
 
-    PushConstants m_PushConstants {};
+    VisibilityPushConstants m_VisibilityPushConstants {};
 
     std::vector<VkVertexInputBindingDescription2EXT>   m_VertexInputBindings;
     std::vector<VkVertexInputAttributeDescription2EXT> m_VertexInputAttributes;

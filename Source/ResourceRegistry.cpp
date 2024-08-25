@@ -306,16 +306,12 @@ void ResourceRegistry::ProcessMeshRequest(RenderContext*                       p
         return *pMeshBuffer;
     };
 
-    pMesh->indices   = CreateMeshBuffer(meshRequest.pIndices, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+    pMesh->indices   = CreateMeshBuffer(meshRequest.pTriangles, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
     pMesh->positions = CreateMeshBuffer(meshRequest.pPoints, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-    pMesh->normals   = CreateMeshBuffer(meshRequest.pNormals, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-    pMesh->texCoords = CreateMeshBuffer(meshRequest.pTexCoords, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
 
     // Label the resources.
     DebugLabelBufferResource(pRenderContext, pMesh->indices, std::format("{} - Index", meshRequest.id.GetText()).c_str());
     DebugLabelBufferResource(pRenderContext, pMesh->positions, std::format("{} - Position", meshRequest.id.GetText()).c_str());
-    DebugLabelBufferResource(pRenderContext, pMesh->normals, std::format("{} - Normal", meshRequest.id.GetText()).c_str());
-    DebugLabelBufferResource(pRenderContext, pMesh->texCoords, std::format("{} - Texcoord", meshRequest.id.GetText()).c_str());
 }
 
 void ResourceRegistry::CommitJob()

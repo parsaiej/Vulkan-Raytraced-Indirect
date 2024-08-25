@@ -6,6 +6,29 @@
 #include <Scene.h>
 #include <Material.h>
 
+void GetVertexInputLayout(std::vector<VkVertexInputBindingDescription2EXT>& bindings, std::vector<VkVertexInputAttributeDescription2EXT>& attributes)
+{
+    VkVertexInputBindingDescription2EXT binding = { VK_STRUCTURE_TYPE_VERTEX_INPUT_BINDING_DESCRIPTION_2_EXT };
+
+    {
+        binding.binding   = 0U;
+        binding.stride    = sizeof(GfVec3f);
+        binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+        binding.divisor   = 1U;
+    }
+    bindings.push_back(binding);
+
+    VkVertexInputAttributeDescription2EXT attribute = { VK_STRUCTURE_TYPE_VERTEX_INPUT_ATTRIBUTE_DESCRIPTION_2_EXT };
+
+    {
+        attribute.binding  = 0U;
+        attribute.location = 0U;
+        attribute.offset   = 0U;
+        attribute.format   = VK_FORMAT_R32G32B32_SFLOAT;
+    }
+    attributes.push_back(attribute);
+}
+
 // Render Pass Implementation
 // ------------------------------------------------------------
 
@@ -38,12 +61,12 @@ RenderPass::RenderPass(HdRenderIndex* pRenderIndex, const HdRprimCollection& col
     // Shader Creation Utility
     // ------------------------------------------------
 
-    auto LoadShader = [&](ShaderID shaderID, const char* filePath, VkShaderCreateInfoEXT vkShaderInfo)
+    auto LoadShader = [&](ShaderID shaderID, const char* filePath, const char* entryName, VkShaderCreateInfoEXT vkShaderInfo)
     {
         std::vector<char> shaderByteCode;
         Check(LoadByteCode(filePath, shaderByteCode), std::format("Failed to read shader bytecode: {}", filePath).c_str());
 
-        vkShaderInfo.pName    = "Main";
+        vkShaderInfo.pName    = entryName;
         vkShaderInfo.pCode    = shaderByteCode.data();
         vkShaderInfo.codeSize = shaderByteCode.size();
         vkShaderInfo.codeType = VK_SHADER_CODE_TYPE_SPIRV_EXT;
@@ -65,7 +88,7 @@ RenderPass::RenderPass(HdRenderIndex* pRenderIndex, const HdRprimCollection& col
     {
         vkPushConstants.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
         vkPushConstants.offset     = 0U;
-        vkPushConstants.size       = sizeof(PushConstants);
+        vkPushConstants.size       = sizeof(VisibilityPushConstants);
     }
 
     // Configure Pipeline Layouts
@@ -94,8 +117,7 @@ RenderPass::RenderPass(HdRenderIndex* pRenderIndex, const HdRprimCollection& col
         vertexShaderInfo.setLayoutCount         = static_cast<uint32_t>(m_DescriptorSetLayouts.size());
         vertexShaderInfo.pSetLayouts            = m_DescriptorSetLayouts.data();
     }
-    LoadShader(ShaderID::FullscreenTriangleVert, "FullscreenTriangle.vert.spv", vertexShaderInfo);
-    LoadShader(ShaderID::MeshVert, "Mesh.vert.spv", vertexShaderInfo);
+    LoadShader(ShaderID::MeshVert, "Visibility.vert.spv", "Vert", vertexShaderInfo);
 
     VkShaderCreateInfoEXT visShaderInfo = { VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT };
     {
@@ -106,7 +128,7 @@ RenderPass::RenderPass(HdRenderIndex* pRenderIndex, const HdRprimCollection& col
         visShaderInfo.setLayoutCount         = static_cast<uint32_t>(m_DescriptorSetLayouts.size());
         visShaderInfo.pSetLayouts            = m_DescriptorSetLayouts.data();
     }
-    LoadShader(ShaderID::VisibilityFrag, "Visibility.frag.spv", visShaderInfo);
+    LoadShader(ShaderID::VisibilityFrag, "Visibility.frag.spv", "Frag", visShaderInfo);
 
     // Vertex Input Layout
     // ------------------------------------------------
@@ -116,7 +138,7 @@ RenderPass::RenderPass(HdRenderIndex* pRenderIndex, const HdRprimCollection& col
     // Configure Push Constants
     // ------------------------------------------------
 
-    m_PushConstants = {};
+    m_VisibilityPushConstants = {};
 
     // Create default sampler.
     // ------------------------------------------------
@@ -219,6 +241,7 @@ void CreateMaterialDescriptor(RenderContext*                      pRenderContext
     vkUpdateDescriptorSets(pRenderContext->GetDevice(), static_cast<uint32_t>(descriptorSetWrites.size()), descriptorSetWrites.data(), 0U, nullptr);
 }
 
+/*
 void CreateMeshDataDescriptor(RenderContext*                         pRenderContext,
                               const ResourceRegistry::MeshResources& mesh,
                               VkDescriptorSetLayout                  vkDescriptorSetLayout,
@@ -260,6 +283,7 @@ void CreateMeshDataDescriptor(RenderContext*                         pRenderCont
 
     vkUpdateDescriptorSets(pRenderContext->GetDevice(), static_cast<uint32_t>(descriptorSetWrites.size()), descriptorSetWrites.data(), 0U, nullptr);
 }
+*/
 
 void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, const TfTokenVector& renderTags)
 {
@@ -345,51 +369,23 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
     auto  pResources = std::static_pointer_cast<ResourceRegistry>(m_Owner->GetResourceRegistry());
 
     // Update camera matrices.
-    m_PushConstants.MatrixVP = GfMatrix4f(renderPassState->GetWorldToViewMatrix()) * GfMatrix4f(renderPassState->GetProjectionMatrix());
-    m_PushConstants.MatrixV  = GfMatrix4f(renderPassState->GetWorldToViewMatrix());
+    auto matrixVP = GfMatrix4f(renderPassState->GetWorldToViewMatrix()) * GfMatrix4f(renderPassState->GetProjectionMatrix());
 
-    PROFILE_START("Record Mesh Rendering Commands");
+    PROFILE_START("Record Visibility Buffer");
 
     auto RenderSceneMeshList = [&]()
     {
-        for (const auto& pMesh : pScene->GetMeshList())
+        const auto& meshList = pScene->GetMeshList();
+
+        m_VisibilityPushConstants.MeshCount = static_cast<uint32_t>(meshList.size());
+
+        for (uint32_t meshIndex = 0U; meshIndex < meshList.size(); meshIndex++)
         {
+            auto* pMesh = meshList[meshIndex];
+
             ResourceRegistry::MeshResources mesh;
             if (!pResources->GetMeshResources(pMesh->GetResourceHandle(), mesh))
                 return;
-
-            ResourceRegistry::MaterialResources material;
-            if (pResources->GetMaterialResources(pMesh->GetMaterialHash(), material))
-            {
-                auto* pMaterialDescriptor = &m_MaterialDescriptors[pMesh->GetMaterialHash()];
-
-                if (*pMaterialDescriptor == VK_NULL_HANDLE)
-                {
-                    // Build the descriptor if it doesn't exit.
-                    CreateMaterialDescriptor(pRenderContext, m_DefaultSampler, material, m_DescriptorSetLayouts[0], pMaterialDescriptor);
-                }
-
-                // Bind material.
-                vkCmdBindDescriptorSets(pFrame->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_PipelineLayout, 0U, 1U, pMaterialDescriptor, 0U, nullptr);
-
-                m_PushConstants.HasMaterial = 1U;
-            }
-            else
-                m_PushConstants.HasMaterial = 0U;
-
-            // Bind mesh data needed for resolving face-varying primvars.
-            {
-                auto* pMeshDataDescriptor = &m_MeshDataDescriptors[pMesh->GetResourceHandle()];
-
-                if (*pMeshDataDescriptor == VK_NULL_HANDLE)
-                {
-                    // Build the descriptor if it doesn't exit.
-                    CreateMeshDataDescriptor(pRenderContext, mesh, m_DescriptorSetLayouts[1], pMeshDataDescriptor);
-                }
-
-                // Bind material.
-                vkCmdBindDescriptorSets(pFrame->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_PipelineLayout, 1U, 1U, pMeshDataDescriptor, 0U, nullptr);
-            }
 
             vkCmdBindIndexBuffer(pFrame->cmd, mesh.indices.buffer, 0U, VK_INDEX_TYPE_UINT32);
 
@@ -398,14 +394,15 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
 
             vkCmdBindVertexBuffers(pFrame->cmd, 0U, 1U, vertexBuffers.data(), vertexBufferOffset.data());
 
-            m_PushConstants.MatrixM = pMesh->GetLocalToWorld();
+            m_VisibilityPushConstants.MatrixMVP = pMesh->GetLocalToWorld() * matrixVP;
+            m_VisibilityPushConstants.MeshID    = meshIndex;
 
             vkCmdPushConstants(pFrame->cmd,
                                m_PipelineLayout,
                                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
                                0U,
-                               sizeof(PushConstants),
-                               &m_PushConstants);
+                               sizeof(VisibilityPushConstants),
+                               &m_VisibilityPushConstants);
 
             vkCmdDrawIndexed(pFrame->cmd, pMesh->GetIndexCount(), 1U, 0U, 0U, 0U);
         }

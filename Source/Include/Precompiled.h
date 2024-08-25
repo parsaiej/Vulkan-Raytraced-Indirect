@@ -103,6 +103,7 @@ using namespace DirectX::SimpleMath;
 #include <pxr/imaging/hd/task.h>
 #include <pxr/imaging/hd/types.h>
 #include <pxr/imaging/hd/vtBufferSource.h>
+#include <pxr/imaging/hd/instancer.h>
 
 // MaterialX Support.
 #include <pxr/imaging/hdMtlx/hdMtlx.h>

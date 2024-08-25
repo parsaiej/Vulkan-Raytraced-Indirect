@@ -35,7 +35,13 @@ void Mesh::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParams, H
 
     // Extract pointers to data lists for the mesh. Some might not exist so we check.
     SafeGet(HdTokens->points, meshRequest.pPoints);
-    SafeGet(HdTokens->normals, meshRequest.pNormals);
+
+    if (meshRequest.pPoints.empty())
+    {
+        // For some reason we can be provided empty meshes that fuck everything up.. skip...
+        *pDirtyBits &= ~HdChangeTracker::AllSceneDirtyBits;
+        return;
+    }
 
     // Compute the triangulated indices from the mesh topology.
     HdMeshTopology topology = pSceneDelegate->GetMeshTopology(id);
@@ -45,9 +51,9 @@ void Mesh::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParams, H
 
     // Reconstruct the indices / mesh topology.
     VtIntArray trianglePrimitiveParams;
-    meshUtil.ComputeTriangleIndices(&meshRequest.pIndices, &trianglePrimitiveParams);
+    meshUtil.ComputeTriangleIndices(&meshRequest.pTriangles, &trianglePrimitiveParams);
 
-    m_IndexCount = static_cast<uint32_t>(meshRequest.pIndices.size()) * 3U;
+    m_IndexCount = static_cast<uint32_t>(meshRequest.pTriangles.size()) * 3U;
 
     // TODO(parsa): Check the primvar meta data to determine face-varying or vertex interpolation.
     // For vertex interpolation, we can but the buffer directly in the vertex binding and don't need to triangulate
@@ -55,6 +61,7 @@ void Mesh::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParams, H
     // in order to be manually sampled based on SV_PrimitiveID and interpolatated with SV_Barycentric. This requires a more
     // robust system that createst vertex bindings / descriptors accordingly but can be worked around for known asset formatting.
 
+    /*
     if (pSceneDelegate->Get(id, TfToken("primvars:st")).IsHolding<VtVec2fArray>())
     {
         // https://graphics.pixar.com/opensubdiv/docs/subdivision_surfaces.html#face-varying-interpolation-rules
@@ -71,6 +78,7 @@ void Mesh::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParams, H
 
         meshRequest.pTexCoords = pTriangulatedTexcoord.UncheckedGet<VtVec2fArray>();
     }
+    */
 
     // Push request.
     m_ResourceHandle =

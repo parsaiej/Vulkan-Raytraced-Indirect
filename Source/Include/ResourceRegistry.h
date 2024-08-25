@@ -16,9 +16,7 @@ public:
     {
         SdfPath      id;
         VtVec3fArray pPoints;
-        VtVec3fArray pNormals;
-        VtVec3iArray pIndices;
-        VtVec2fArray pTexCoords;
+        VtVec3iArray pTriangles;
     };
 
     struct MaterialRequest
@@ -34,8 +32,6 @@ public:
     {
         Buffer indices;
         Buffer positions;
-        Buffer normals;
-        Buffer texCoords;
     };
 
     struct MaterialResources

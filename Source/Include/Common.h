@@ -58,27 +58,6 @@ inline void Check(bool a, const char* b)
 #define PROFILE_END
 #endif
 
-// Common parameters pushed to all shaders.
-// ---------------------------------------------------------
-
-struct PushConstants
-{
-    GfMatrix4f MatrixM;
-    GfMatrix4f MatrixVP;
-    GfMatrix4f MatrixV;
-    uint32_t   HasMaterial;
-};
-
-// Layout of the standard Vertex for this application.
-// ---------------------------------------------------------
-
-struct Vertex
-{
-    glm::vec3 positionOS;
-    glm::vec3 normalOS;
-    glm::vec2 texCoord0;
-};
-
 // Collection of vulkan primitives to hold the current frame state.
 // ---------------------------------------------------------
 
@@ -131,8 +110,6 @@ bool LoadByteCode(const char* filePath, std::vector<char>& byteCode);
 void SetDefaultRenderState(VkCommandBuffer commandBuffer);
 
 bool GetVulkanQueueIndices(const VkInstance& vkInstance, const VkPhysicalDevice& vkPhysicalDevice, uint32_t& vkQueueIndexGraphics);
-
-void GetVertexInputLayout(std::vector<VkVertexInputBindingDescription2EXT>& bindings, std::vector<VkVertexInputAttributeDescription2EXT>& attributes);
 
 bool CreateRenderingAttachments(RenderContext* pRenderContext, Image& colorAttachment, Image& depthAttachment);
 
