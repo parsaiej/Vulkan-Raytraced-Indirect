@@ -97,16 +97,16 @@ RenderPass::RenderPass(HdRenderIndex* pRenderIndex, const HdRprimCollection& col
     LoadShader(ShaderID::FullscreenTriangleVert, "FullscreenTriangle.vert.spv", vertexShaderInfo);
     LoadShader(ShaderID::MeshVert, "Mesh.vert.spv", vertexShaderInfo);
 
-    VkShaderCreateInfoEXT litShaderInfo = { VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT };
+    VkShaderCreateInfoEXT visShaderInfo = { VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT };
     {
-        litShaderInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+        visShaderInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
 
-        litShaderInfo.pushConstantRangeCount = 1U;
-        litShaderInfo.pPushConstantRanges    = &vkPushConstants;
-        litShaderInfo.setLayoutCount         = static_cast<uint32_t>(m_DescriptorSetLayouts.size());
-        litShaderInfo.pSetLayouts            = m_DescriptorSetLayouts.data();
+        visShaderInfo.pushConstantRangeCount = 1U;
+        visShaderInfo.pPushConstantRanges    = &vkPushConstants;
+        visShaderInfo.setLayoutCount         = static_cast<uint32_t>(m_DescriptorSetLayouts.size());
+        visShaderInfo.pSetLayouts            = m_DescriptorSetLayouts.data();
     }
-    LoadShader(ShaderID::LitFrag, "Lit.frag.spv", litShaderInfo);
+    LoadShader(ShaderID::VisibilityFrag, "Visibility.frag.spv", visShaderInfo);
 
     // Vertex Input Layout
     // ------------------------------------------------
@@ -290,7 +290,7 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
         depthAttachmentInfo.clearValue.depthStencil = { 1.0, 0x0 };
     }
 
-    // Record
+    // 1) Visibility Buffer
     // --------------------------------------------
 
     VulkanColorImageBarrier(pFrame->cmd,
@@ -326,7 +326,7 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
                                                      VK_NULL_HANDLE,
                                                      VK_NULL_HANDLE,
                                                      VK_NULL_HANDLE,
-                                                     m_ShaderMap[ShaderID::LitFrag] };
+                                                     m_ShaderMap[ShaderID::VisibilityFrag] };
 
     vkCmdBindShadersEXT(pFrame->cmd,
                         static_cast<uint32_t>(vkGraphicsShaderStageBits.size()),

@@ -8,7 +8,7 @@ class RenderDelegate;
 enum ShaderID
 {
     FullscreenTriangleVert,
-    LitFrag,
+    VisibilityFrag,
     MeshVert
 };
 
