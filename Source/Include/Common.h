@@ -66,6 +66,7 @@ struct PushConstants
     GfMatrix4f MatrixM;
     GfMatrix4f MatrixVP;
     GfMatrix4f MatrixV;
+    uint32_t   HasMaterial;
 };
 
 // Layout of the standard Vertex for this application.

@@ -369,14 +369,6 @@ void GetVertexInputLayout(std::vector<VkVertexInputBindingDescription2EXT>& bind
     }
     bindings.push_back(binding);
 
-    {
-        binding.binding   = 2U;
-        binding.stride    = sizeof(GfVec2f);
-        binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-        binding.divisor   = 1U;
-    }
-    bindings.push_back(binding);
-
     VkVertexInputAttributeDescription2EXT attribute = { VK_STRUCTURE_TYPE_VERTEX_INPUT_ATTRIBUTE_DESCRIPTION_2_EXT };
 
     // Position
@@ -394,15 +386,6 @@ void GetVertexInputLayout(std::vector<VkVertexInputBindingDescription2EXT>& bind
         attribute.location = 1U;
         attribute.offset   = 0U;
         attribute.format   = VK_FORMAT_R32G32B32_SFLOAT;
-    }
-    attributes.push_back(attribute);
-
-    // Texcoord
-    {
-        attribute.binding  = 2U;
-        attribute.location = 2U;
-        attribute.offset   = 0;
-        attribute.format   = VK_FORMAT_R32G32_SFLOAT;
     }
     attributes.push_back(attribute);
 }

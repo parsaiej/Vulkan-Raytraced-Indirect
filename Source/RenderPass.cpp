@@ -63,7 +63,7 @@ RenderPass::RenderPass(HdRenderIndex* pRenderIndex, const HdRprimCollection& col
 
     VkPushConstantRange vkPushConstants;
     {
-        vkPushConstants.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+        vkPushConstants.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
         vkPushConstants.offset     = 0U;
         vkPushConstants.size       = sizeof(PushConstants);
     }
@@ -358,22 +358,24 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
             if (!pResources->GetMeshResources(pMesh->GetResourceHandle(), mesh))
                 return;
 
-            if (pMesh->GetMaterialHash() != UINT_MAX)
+            ResourceRegistry::MaterialResources material;
+            if (pResources->GetMaterialResources(pMesh->GetMaterialHash(), material))
             {
                 auto* pMaterialDescriptor = &m_MaterialDescriptors[pMesh->GetMaterialHash()];
 
                 if (*pMaterialDescriptor == VK_NULL_HANDLE)
                 {
-                    ResourceRegistry::MaterialResources material;
-                    pResources->GetMaterialResources(pMesh->GetMaterialHash(), material);
-
                     // Build the descriptor if it doesn't exit.
                     CreateMaterialDescriptor(pRenderContext, m_DefaultSampler, material, m_DescriptorSetLayouts[0], pMaterialDescriptor);
                 }
 
                 // Bind material.
                 vkCmdBindDescriptorSets(pFrame->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_PipelineLayout, 0U, 1U, pMaterialDescriptor, 0U, nullptr);
+
+                m_PushConstants.HasMaterial = 1U;
             }
+            else
+                m_PushConstants.HasMaterial = 0U;
 
             // Bind mesh data needed for resolving face-varying primvars.
             {
@@ -391,13 +393,19 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
 
             vkCmdBindIndexBuffer(pFrame->cmd, mesh.indices.buffer, 0U, VK_INDEX_TYPE_UINT32);
 
-            std::array<VkDeviceSize, 3> vertexBufferOffset = { 0U, 0U, 0U };
-            std::array<VkBuffer, 3>     vertexBuffers      = { mesh.positions.buffer, mesh.normals.buffer, mesh.texCoords.buffer };
+            std::array<VkDeviceSize, 2> vertexBufferOffset = { 0U, 0U };
+            std::array<VkBuffer, 2>     vertexBuffers      = { mesh.positions.buffer, mesh.normals.buffer };
 
-            vkCmdBindVertexBuffers(pFrame->cmd, 0U, 3U, vertexBuffers.data(), vertexBufferOffset.data());
+            vkCmdBindVertexBuffers(pFrame->cmd, 0U, 2U, vertexBuffers.data(), vertexBufferOffset.data());
 
             m_PushConstants.MatrixM = pMesh->GetLocalToWorld();
-            vkCmdPushConstants(pFrame->cmd, m_PipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0U, sizeof(PushConstants), &m_PushConstants);
+
+            vkCmdPushConstants(pFrame->cmd,
+                               m_PipelineLayout,
+                               VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                               0U,
+                               sizeof(PushConstants),
+                               &m_PushConstants);
 
             vkCmdDrawIndexed(pFrame->cmd, pMesh->GetIndexCount(), 1U, 0U, 0U, 0U);
         }

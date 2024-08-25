@@ -52,7 +52,7 @@ ResourceRegistry::ResourceRegistry(RenderContext* pRenderContext) : m_RenderCont
     {
         VkBufferCreateInfo bufferInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
         bufferInfo.size               = 16U;
-        bufferInfo.usage              = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        bufferInfo.usage              = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 
         VmaAllocationCreateInfo allocInfo = {};
         allocInfo.usage                   = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
@@ -306,7 +306,7 @@ void ResourceRegistry::ProcessMeshRequest(RenderContext*                       p
         return *pMeshBuffer;
     };
 
-    pMesh->indices   = CreateMeshBuffer(meshRequest.pIndices, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+    pMesh->indices   = CreateMeshBuffer(meshRequest.pIndices, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
     pMesh->positions = CreateMeshBuffer(meshRequest.pPoints, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
     pMesh->normals   = CreateMeshBuffer(meshRequest.pNormals, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
     pMesh->texCoords = CreateMeshBuffer(meshRequest.pTexCoords, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
@@ -428,7 +428,8 @@ bool ResourceRegistry::GetMeshResources(uint64_t resourceHandle, MeshResources& 
 
     meshResources = m_MeshResourceMap[resourceHandle];
 
-    return true;
+    // Check the validity of index buffer.
+    return meshResources.indices.buffer != m_BufferResources[0].buffer;
 }
 
 bool ResourceRegistry::GetMaterialResources(uint64_t resourceHandle, MaterialResources& materialResources)

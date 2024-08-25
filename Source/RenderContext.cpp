@@ -331,17 +331,16 @@ void RenderContext::Dispatch(const std::function<void(FrameParams)>& commandsFun
         Check(vkResetFences(m_VKDeviceLogical, 1U, &m_VKInFlightFences.at(frameInFlightIndex)), "Failed to reset the frame fence.");
 
         VkSubmitInfo vkQueueSubmitInfo = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
-        {
-            VkPipelineStageFlags vkWaitStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 
-            vkQueueSubmitInfo.commandBufferCount   = 1U;
-            vkQueueSubmitInfo.pCommandBuffers      = &vkCurrentCommandBuffer;
-            vkQueueSubmitInfo.waitSemaphoreCount   = 1U;
-            vkQueueSubmitInfo.pWaitSemaphores      = &m_VKImageAvailableSemaphores.at(frameInFlightIndex);
-            vkQueueSubmitInfo.signalSemaphoreCount = 1U;
-            vkQueueSubmitInfo.pSignalSemaphores    = &m_VKRenderCompleteSemaphores.at(frameInFlightIndex);
-            vkQueueSubmitInfo.pWaitDstStageMask    = &vkWaitStageMask;
-        }
+        VkPipelineStageFlags vkWaitStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+
+        vkQueueSubmitInfo.commandBufferCount   = 1U;
+        vkQueueSubmitInfo.pCommandBuffers      = &vkCurrentCommandBuffer;
+        vkQueueSubmitInfo.waitSemaphoreCount   = 1U;
+        vkQueueSubmitInfo.pWaitSemaphores      = &m_VKImageAvailableSemaphores.at(frameInFlightIndex);
+        vkQueueSubmitInfo.signalSemaphoreCount = 1U;
+        vkQueueSubmitInfo.pSignalSemaphores    = &m_VKRenderCompleteSemaphores.at(frameInFlightIndex);
+        vkQueueSubmitInfo.pWaitDstStageMask    = &vkWaitStageMask;
 
         std::lock_guard<std::mutex> commandQueueLock(GetCommandQueueMutex());
 

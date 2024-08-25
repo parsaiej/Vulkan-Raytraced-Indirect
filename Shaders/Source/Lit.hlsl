@@ -1,9 +1,17 @@
+struct Constants
+{
+    float4x4 _MatrixM;
+    float4x4 _MatrixVP;
+    float4x4 _MatrixV;
+    uint     _HasMaterial;
+};
+[[vk::push_constant]] Constants gConstants;
+
 struct Interpolators
 {
     float4 positionCS : SV_Position;
     float3 positionVS : TEXCOORD0;
     float3 normalOS   : TEXCOORD1;
-    float2 texCoord0  : TEXCOORD2;
 };
 
 struct RasterData
@@ -39,6 +47,9 @@ float3 ComputeScreenSpaceNormal(float3 positionVS)
 
 float4 Main(Interpolators interpolators, RasterData rasterData) : SV_Target
 {
+    if (!gConstants._HasMaterial)
+        return float4(0, 0, 0, 1);
+
     float2 st0 = asfloat(_FaceVaryingTextureCoordinateBuffer.Load2((rasterData.primitiveID * 3U + 0U) << 3U));
     float2 st1 = asfloat(_FaceVaryingTextureCoordinateBuffer.Load2((rasterData.primitiveID * 3U + 1U) << 3U));
     float2 st2 = asfloat(_FaceVaryingTextureCoordinateBuffer.Load2((rasterData.primitiveID * 3U + 2U) << 3U));

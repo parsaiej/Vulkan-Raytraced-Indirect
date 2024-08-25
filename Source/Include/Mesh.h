@@ -7,7 +7,7 @@ class Mesh : public HdMesh
 {
 public:
 
-    Mesh(const SdfPath& rprimId, RenderDelegate* pRenderDelegate) : HdMesh(rprimId), m_Owner(pRenderDelegate) {}
+    Mesh(const SdfPath& rprimId, RenderDelegate* pRenderDelegate) : HdMesh(rprimId), m_Owner(pRenderDelegate), m_MaterialHash(UINT64_MAX) {}
     ~Mesh() override = default;
 
     HdDirtyBits GetInitialDirtyBitsMask() const override;
