@@ -238,7 +238,7 @@ void CreateMeshDataDescriptor(RenderContext*                         pRenderCont
     std::vector<VkWriteDescriptorSet>   descriptorSetWrites;
 
     // Import to note invalidate the back() pointer as we push images.
-    descriptorBufferInfos.reserve(2U);
+    descriptorBufferInfos.reserve(1U);
 
     auto PushStorageBuffer = [&](const Buffer& storageBuffer)
     {
@@ -256,7 +256,6 @@ void CreateMeshDataDescriptor(RenderContext*                         pRenderCont
         descriptorSetWrites.push_back(writeInfo);
     };
 
-    PushStorageBuffer(mesh.indices);
     PushStorageBuffer(mesh.texCoords);
 
     vkUpdateDescriptorSets(pRenderContext->GetDevice(), static_cast<uint32_t>(descriptorSetWrites.size()), descriptorSetWrites.data(), 0U, nullptr);
@@ -390,9 +389,6 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
                 vkCmdBindDescriptorSets(pFrame->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_PipelineLayout, 1U, 1U, pMeshDataDescriptor, 0U, nullptr);
             }
 
-            VmaAllocationInfo allocationInfo;
-            vmaGetAllocationInfo(pRenderContext->GetAllocator(), mesh.indices.bufferAllocation, &allocationInfo);
-
             vkCmdBindIndexBuffer(pFrame->cmd, mesh.indices.buffer, 0U, VK_INDEX_TYPE_UINT32);
 
             std::array<VkDeviceSize, 3> vertexBufferOffset = { 0U, 0U, 0U };
@@ -403,7 +399,7 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
             m_PushConstants.MatrixM = pMesh->GetLocalToWorld();
             vkCmdPushConstants(pFrame->cmd, m_PipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0U, sizeof(PushConstants), &m_PushConstants);
 
-            vkCmdDrawIndexed(pFrame->cmd, static_cast<uint32_t>(allocationInfo.size) / sizeof(uint32_t), 1U, 0U, 0U, 0U);
+            vkCmdDrawIndexed(pFrame->cmd, pMesh->GetIndexCount(), 1U, 0U, 0U, 0U);
         }
     };
 

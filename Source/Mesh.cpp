@@ -36,9 +36,6 @@ void Mesh::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParams, H
     // Extract pointers to data lists for the mesh. Some might not exist so we check.
     SafeGet(HdTokens->points, meshRequest.pPoints);
     SafeGet(HdTokens->normals, meshRequest.pNormals);
-    SafeGet(TfToken("primvars:st"), meshRequest.pTexCoords);
-
-    auto pIndexList = VtVec3iArray();
 
     // Compute the triangulated indices from the mesh topology.
     HdMeshTopology topology = pSceneDelegate->GetMeshTopology(id);
@@ -48,33 +45,30 @@ void Mesh::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParams, H
 
     // Reconstruct the indices / mesh topology.
     VtIntArray trianglePrimitiveParams;
-    meshUtil.ComputeTriangleIndices(&pIndexList, &trianglePrimitiveParams);
+    meshUtil.ComputeTriangleIndices(&meshRequest.pIndices, &trianglePrimitiveParams);
 
-    meshRequest.pIndices = pIndexList;
+    m_IndexCount = static_cast<uint32_t>(meshRequest.pIndices.size()) * 3U;
 
-    // VtVec2fArray resampledST(meshRequest.pPoints.size());
+    // TODO(parsa): Check the primvar meta data to determine face-varying or vertex interpolation.
+    // For vertex interpolation, we can but the buffer directly in the vertex binding and don't need to triangulate
+    // or handle per-face values. For face-varying, need to trianglulate and bind the resource to the fragment stage
+    // in order to be manually sampled based on SV_PrimitiveID and interpolatated with SV_Barycentric. This requires a more
+    // robust system that createst vertex bindings / descriptors accordingly but can be worked around for known asset formatting.
+
     {
         // https://graphics.pixar.com/opensubdiv/docs/subdivision_surfaces.html#face-varying-interpolation-rules
-        //  HdVtBufferSource pTexcoordSource(TfToken("TextureCoordinateSource"),
-        //                                   VtValue(pSceneDelegate->Get(id, TfToken("primvars:st")).Get<VtVec2fArray>()));
-        //
-        //  // Triangule the texture coordinate prim vars.
-        //  VtValue pTriangulatedTexcoord;
-        //  Check(meshUtil.ComputeTriangulatedFaceVaryingPrimvar(pTexcoordSource.GetData(),
-        //                                                       static_cast<int>(pTexcoordSource.GetNumElements()),
-        //                                                       pTexcoordSource.GetTupleType().type,
-        //                                                       &pTriangulatedTexcoord),
-        //        "Failed to triangulate texture coordinate list.");
+        HdVtBufferSource pTexcoordSource(TfToken("TextureCoordinateSource"),
+                                         VtValue(pSceneDelegate->Get(id, TfToken("primvars:st")).Get<VtVec2fArray>()));
 
-        // for (uint32_t triangleIndex = 0U; triangleIndex < pIndexList.size(); triangleIndex++)
-        // {
-        //     auto& triangle = pIndexList[triangleIndex];
-        //
-        //     for (uint32_t triangleVertexIndex = 0U; triangleVertexIndex < 1U; triangleVertexIndex++)
-        //     {
-        //         resampledST[triangle[triangleVertexIndex]] = meshRequest.pTexCoords[triangleIndex * 3U + triangleVertexIndex];
-        //     }
-        // }
+        // Triangule the texture coordinate prim vars.
+        VtValue pTriangulatedTexcoord;
+        Check(meshUtil.ComputeTriangulatedFaceVaryingPrimvar(pTexcoordSource.GetData(),
+                                                             static_cast<int>(pTexcoordSource.GetNumElements()),
+                                                             pTexcoordSource.GetTupleType().type,
+                                                             &pTriangulatedTexcoord),
+              "Failed to triangulate texture coordinate list.");
+
+        meshRequest.pTexCoords = pTriangulatedTexcoord.UncheckedGet<VtVec2fArray>();
     }
 
     // Push request.

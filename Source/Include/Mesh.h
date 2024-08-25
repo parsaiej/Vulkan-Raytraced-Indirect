@@ -17,6 +17,7 @@ public:
     inline const uint64_t&   GetResourceHandle() const { return m_ResourceHandle; }
     inline const GfMatrix4f& GetLocalToWorld() const { return m_LocalToWorld; }
     inline const uint64_t&   GetMaterialHash() const { return m_MaterialHash; }
+    inline const uint32_t&   GetIndexCount() const { return m_IndexCount; }
 
 protected:
 
@@ -34,6 +35,8 @@ private:
     GfMatrix4f m_LocalToWorld {};
 
     uint64_t m_MaterialHash;
+
+    uint32_t m_IndexCount;
 };
 
 #endif
