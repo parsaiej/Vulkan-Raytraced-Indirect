@@ -393,10 +393,10 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
 
             vkCmdBindIndexBuffer(pFrame->cmd, mesh.indices.buffer, 0U, VK_INDEX_TYPE_UINT32);
 
-            std::array<VkDeviceSize, 2> vertexBufferOffset = { 0U, 0U };
-            std::array<VkBuffer, 2>     vertexBuffers      = { mesh.positions.buffer, mesh.normals.buffer };
+            std::array<VkDeviceSize, 1> vertexBufferOffset = { 0U };
+            std::array<VkBuffer, 1>     vertexBuffers      = { mesh.positions.buffer };
 
-            vkCmdBindVertexBuffers(pFrame->cmd, 0U, 2U, vertexBuffers.data(), vertexBufferOffset.data());
+            vkCmdBindVertexBuffers(pFrame->cmd, 0U, 1U, vertexBuffers.data(), vertexBufferOffset.data());
 
             m_PushConstants.MatrixM = pMesh->GetLocalToWorld();
 

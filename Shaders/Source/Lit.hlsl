@@ -11,7 +11,6 @@ struct Interpolators
 {
     float4 positionCS : SV_Position;
     float3 positionVS : TEXCOORD0;
-    float3 normalOS   : TEXCOORD1;
 };
 
 struct RasterData

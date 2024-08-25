@@ -361,29 +361,11 @@ void GetVertexInputLayout(std::vector<VkVertexInputBindingDescription2EXT>& bind
     }
     bindings.push_back(binding);
 
-    {
-        binding.binding   = 1U;
-        binding.stride    = sizeof(GfVec3f);
-        binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-        binding.divisor   = 1U;
-    }
-    bindings.push_back(binding);
-
     VkVertexInputAttributeDescription2EXT attribute = { VK_STRUCTURE_TYPE_VERTEX_INPUT_ATTRIBUTE_DESCRIPTION_2_EXT };
 
-    // Position
     {
         attribute.binding  = 0U;
         attribute.location = 0U;
-        attribute.offset   = 0U;
-        attribute.format   = VK_FORMAT_R32G32B32_SFLOAT;
-    }
-    attributes.push_back(attribute);
-
-    // Normal
-    {
-        attribute.binding  = 1U;
-        attribute.location = 1U;
         attribute.offset   = 0U;
         attribute.format   = VK_FORMAT_R32G32B32_SFLOAT;
     }

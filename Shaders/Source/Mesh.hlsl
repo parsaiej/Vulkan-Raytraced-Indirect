@@ -13,14 +13,12 @@ struct Constants
 struct VertexInput
 {
     [[vk::location(0)]] float3 positionOS : POSITION;
-    [[vk::location(1)]] float3 normalOS   : NORMAL;
 };
 
 struct Interpolators
 {
     float4 positionCS : SV_Position;
     float3 positionVS : TEXCOORD0;
-    float3 normalOS   : TEXCOORD1;
 };
 
 Interpolators Main(VertexInput input)
@@ -32,7 +30,6 @@ Interpolators Main(VertexInput input)
 
     i.positionCS = mul(gConstants._MatrixVP, float4(positionWS, 1.0));
     i.positionVS = mul(gConstants._MatrixV,  float4(positionWS, 1.0)).xyz;
-    i.normalOS   = mul(gConstants._MatrixM,  float4(input.normalOS, 0.0)).xyz;
     
     return i;
 }
