@@ -23,9 +23,14 @@ RenderPass::RenderPass(HdRenderIndex* pRenderIndex, const HdRprimCollection& col
     // Configure Descriptor Set Layouts
     // --------------------------------------
 
-    Check(CreatePhysicallyBasedMaterialDescriptorLayout(pRenderContext->GetDevice(), m_DescriptorSetLayout),
+    m_DescriptorSetLayouts.resize(2U);
+
+    Check(CreatePhysicallyBasedMaterialDescriptorLayout(pRenderContext->GetDevice(), m_DescriptorSetLayouts[0]),
           "Failed to create a Vulkan Descriptor Set Layout for Physically Based "
           "Materials.");
+
+    Check(CreateMeshDataDescriptorLayout(pRenderContext->GetDevice(), m_DescriptorSetLayouts[1]),
+          "Failed to create a Vulkan Descriptor Set Layout for Mesh Data.");
 
     // Obtain the resource registry
     auto pResourceRegistry = std::static_pointer_cast<ResourceRegistry>(m_Owner->GetResourceRegistry());
@@ -68,8 +73,8 @@ RenderPass::RenderPass(HdRenderIndex* pRenderIndex, const HdRprimCollection& col
 
     VkPipelineLayoutCreateInfo vkPipelineLayoutInfo = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
     {
-        vkPipelineLayoutInfo.setLayoutCount         = 1U;
-        vkPipelineLayoutInfo.pSetLayouts            = &m_DescriptorSetLayout;
+        vkPipelineLayoutInfo.setLayoutCount         = static_cast<uint32_t>(m_DescriptorSetLayouts.size());
+        vkPipelineLayoutInfo.pSetLayouts            = m_DescriptorSetLayouts.data();
         vkPipelineLayoutInfo.pushConstantRangeCount = 1U;
         vkPipelineLayoutInfo.pPushConstantRanges    = &vkPushConstants;
     }
@@ -86,8 +91,8 @@ RenderPass::RenderPass(HdRenderIndex* pRenderIndex, const HdRprimCollection& col
 
         vertexShaderInfo.pushConstantRangeCount = 1U;
         vertexShaderInfo.pPushConstantRanges    = &vkPushConstants;
-        vertexShaderInfo.setLayoutCount         = 1U;
-        vertexShaderInfo.pSetLayouts            = &m_DescriptorSetLayout;
+        vertexShaderInfo.setLayoutCount         = static_cast<uint32_t>(m_DescriptorSetLayouts.size());
+        vertexShaderInfo.pSetLayouts            = m_DescriptorSetLayouts.data();
     }
     LoadShader(ShaderID::FullscreenTriangleVert, "FullscreenTriangle.vert.spv", vertexShaderInfo);
     LoadShader(ShaderID::MeshVert, "Mesh.vert.spv", vertexShaderInfo);
@@ -98,8 +103,8 @@ RenderPass::RenderPass(HdRenderIndex* pRenderIndex, const HdRprimCollection& col
 
         litShaderInfo.pushConstantRangeCount = 1U;
         litShaderInfo.pPushConstantRanges    = &vkPushConstants;
-        litShaderInfo.setLayoutCount         = 1U;
-        litShaderInfo.pSetLayouts            = &m_DescriptorSetLayout;
+        litShaderInfo.setLayoutCount         = static_cast<uint32_t>(m_DescriptorSetLayouts.size());
+        litShaderInfo.pSetLayouts            = m_DescriptorSetLayouts.data();
     }
     LoadShader(ShaderID::LitFrag, "Lit.frag.spv", litShaderInfo);
 
@@ -141,7 +146,9 @@ RenderPass::~RenderPass()
     vmaDestroyImage(pRenderContext->GetAllocator(), m_DepthAttachment.image, m_DepthAttachment.imageAllocation);
 
     vkDestroyPipelineLayout(pRenderContext->GetDevice(), m_PipelineLayout, nullptr);
-    vkDestroyDescriptorSetLayout(pRenderContext->GetDevice(), m_DescriptorSetLayout, nullptr);
+
+    for (auto& setLayout : m_DescriptorSetLayouts)
+        vkDestroyDescriptorSetLayout(pRenderContext->GetDevice(), setLayout, nullptr);
 
     for (auto& shader : m_ShaderMap)
         vkDestroyShaderEXT(pRenderContext->GetDevice(), shader.second, nullptr);
@@ -208,6 +215,49 @@ void CreateMaterialDescriptor(RenderContext*                      pRenderContext
         writeInfo.pImageInfo      = &descriptorSamplerInfo;
     }
     descriptorSetWrites.push_back(writeInfo);
+
+    vkUpdateDescriptorSets(pRenderContext->GetDevice(), static_cast<uint32_t>(descriptorSetWrites.size()), descriptorSetWrites.data(), 0U, nullptr);
+}
+
+void CreateMeshDataDescriptor(RenderContext*                         pRenderContext,
+                              const ResourceRegistry::MeshResources& mesh,
+                              VkDescriptorSetLayout                  vkDescriptorSetLayout,
+                              VkDescriptorSet*                       pDescriptorSet)
+{
+    VkDescriptorSetAllocateInfo descriptorSetAllocationInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
+    {
+        descriptorSetAllocationInfo.descriptorPool     = pRenderContext->GetDescriptorPool();
+        descriptorSetAllocationInfo.descriptorSetCount = 1U;
+        descriptorSetAllocationInfo.pSetLayouts        = &vkDescriptorSetLayout;
+    }
+    Check(vkAllocateDescriptorSets(pRenderContext->GetDevice(), &descriptorSetAllocationInfo, pDescriptorSet),
+          "Failed to allocate mesh data descriptors.");
+
+    // Update the descriptor sets.
+    std::vector<VkDescriptorBufferInfo> descriptorBufferInfos;
+    std::vector<VkWriteDescriptorSet>   descriptorSetWrites;
+
+    // Import to note invalidate the back() pointer as we push images.
+    descriptorBufferInfos.reserve(2U);
+
+    auto PushStorageBuffer = [&](const Buffer& storageBuffer)
+    {
+        // descriptorBufferInfos.push_back(Vkl(VK_NULL_HANDLE, sampledImage.imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
+        descriptorBufferInfos.push_back(VkDescriptorBufferInfo(storageBuffer.buffer, 0U, VK_WHOLE_SIZE));
+
+        VkWriteDescriptorSet writeInfo = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+        {
+            writeInfo.descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            writeInfo.descriptorCount = 1U;
+            writeInfo.dstBinding      = static_cast<uint32_t>(descriptorSetWrites.size());
+            writeInfo.dstSet          = *pDescriptorSet;
+            writeInfo.pBufferInfo     = &descriptorBufferInfos.back();
+        }
+        descriptorSetWrites.push_back(writeInfo);
+    };
+
+    PushStorageBuffer(mesh.indices);
+    PushStorageBuffer(mesh.texCoords);
 
     vkUpdateDescriptorSets(pRenderContext->GetDevice(), static_cast<uint32_t>(descriptorSetWrites.size()), descriptorSetWrites.data(), 0U, nullptr);
 }
@@ -319,11 +369,25 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
                     pResources->GetMaterialResources(pMesh->GetMaterialHash(), material);
 
                     // Build the descriptor if it doesn't exit.
-                    CreateMaterialDescriptor(pRenderContext, m_DefaultSampler, material, m_DescriptorSetLayout, pMaterialDescriptor);
+                    CreateMaterialDescriptor(pRenderContext, m_DefaultSampler, material, m_DescriptorSetLayouts[0], pMaterialDescriptor);
                 }
 
                 // Bind material.
                 vkCmdBindDescriptorSets(pFrame->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_PipelineLayout, 0U, 1U, pMaterialDescriptor, 0U, nullptr);
+            }
+
+            // Bind mesh data needed for resolving face-varying primvars.
+            {
+                auto* pMeshDataDescriptor = &m_MeshDataDescriptors[pMesh->GetResourceHandle()];
+
+                if (*pMeshDataDescriptor == VK_NULL_HANDLE)
+                {
+                    // Build the descriptor if it doesn't exit.
+                    CreateMeshDataDescriptor(pRenderContext, mesh, m_DescriptorSetLayouts[1], pMeshDataDescriptor);
+                }
+
+                // Bind material.
+                vkCmdBindDescriptorSets(pFrame->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_PipelineLayout, 1U, 1U, pMeshDataDescriptor, 0U, nullptr);
             }
 
             VmaAllocationInfo allocationInfo;

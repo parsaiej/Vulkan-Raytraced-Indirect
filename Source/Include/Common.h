@@ -116,6 +116,8 @@ class RenderContext;
 
 bool CreatePhysicallyBasedMaterialDescriptorLayout(const VkDevice& vkLogicalDevice, VkDescriptorSetLayout& vkDescriptorSetLayout);
 
+bool CreateMeshDataDescriptorLayout(const VkDevice& vkLogicalDevice, VkDescriptorSetLayout& vkDescriptorSetLayout);
+
 bool SelectVulkanPhysicalDevice(const VkInstance& vkInstance, const std::vector<const char*>& requiredExtensions, VkPhysicalDevice& vkPhysicalDevice);
 
 bool CreateVulkanLogicalDevice(const VkPhysicalDevice&         vkPhysicalDevice,

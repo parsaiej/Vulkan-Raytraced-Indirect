@@ -52,10 +52,6 @@ void Mesh::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParams, H
 
     meshRequest.pIndices = pIndexList;
 
-    spdlog::info(meshRequest.pPoints.size());
-    spdlog::info(meshRequest.pNormals.size());
-    spdlog::info(meshRequest.pTexCoords.size());
-
     // VtVec2fArray resampledST(meshRequest.pPoints.size());
     {
         // https://graphics.pixar.com/opensubdiv/docs/subdivision_surfaces.html#face-varying-interpolation-rules

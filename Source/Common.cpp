@@ -109,6 +109,27 @@ bool CreatePhysicallyBasedMaterialDescriptorLayout(const VkDevice& vkLogicalDevi
     return vkCreateDescriptorSetLayout(vkLogicalDevice, &vkDescriptorSetLayoutInfo, nullptr, &vkDescriptorSetLayout) == VK_SUCCESS;
 }
 
+bool CreateMeshDataDescriptorLayout(const VkDevice& vkLogicalDevice, VkDescriptorSetLayout& vkDescriptorSetLayout)
+{
+    std::array<VkDescriptorSetLayoutBinding, 2U> vkDescriptorSetLayoutBindings = {
+
+        // Albedo
+        VkDescriptorSetLayoutBinding(0U, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1U, VK_SHADER_STAGE_FRAGMENT_BIT, VK_NULL_HANDLE),
+
+        // Normal
+        VkDescriptorSetLayoutBinding(1U, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1U, VK_SHADER_STAGE_FRAGMENT_BIT, VK_NULL_HANDLE)
+    };
+
+    VkDescriptorSetLayoutCreateInfo vkDescriptorSetLayoutInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+    {
+        vkDescriptorSetLayoutInfo.flags        = 0x0;
+        vkDescriptorSetLayoutInfo.bindingCount = static_cast<uint32_t>(vkDescriptorSetLayoutBindings.size());
+        vkDescriptorSetLayoutInfo.pBindings    = vkDescriptorSetLayoutBindings.data();
+    }
+
+    return vkCreateDescriptorSetLayout(vkLogicalDevice, &vkDescriptorSetLayoutInfo, nullptr, &vkDescriptorSetLayout) == VK_SUCCESS;
+}
+
 bool SelectVulkanPhysicalDevice(const VkInstance& vkInstance, const std::vector<const char*>& requiredExtensions, VkPhysicalDevice& vkPhysicalDevice)
 {
     uint32_t deviceCount = 0U;
