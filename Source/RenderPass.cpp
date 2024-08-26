@@ -143,6 +143,28 @@ void RenderPass::VisibilityPassCreate(RenderContext* pRenderContext)
           "Failed to create attachment view.");
 }
 
+void RenderPass::MaterialPassCreate(RenderContext* pRenderContext)
+{
+    auto CreateDeviceBuffer = [&](Buffer& buffer, uint32_t size, VkBufferUsageFlags usage)
+    {
+        VkBufferCreateInfo bufferInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+        bufferInfo.size               = size;
+        bufferInfo.usage              = usage;
+
+        VmaAllocationCreateInfo allocInfo = {};
+        allocInfo.usage                   = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+
+        Check(vmaCreateBuffer(pRenderContext->GetAllocator(), &bufferInfo, &allocInfo, &buffer.buffer, &buffer.bufferAllocation, nullptr),
+              "Failed to create dedicated buffer memory.");
+    };
+
+    const uint32_t kMaxMaterial = 4096U;
+
+    CreateDeviceBuffer(m_MaterialCountBuffer, sizeof(uint32_t) * kMaxMaterial, VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR);
+    CreateDeviceBuffer(m_MaterialOffsetBuffer, sizeof(uint32_t) * kMaxMaterial, VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR);
+    CreateDeviceBuffer(m_MaterialPixelBuffer, sizeof(GfVec2f) * kWindowWidth * kWindowHeight, VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR);
+}
+
 // Render Pass Implementation
 // ------------------------------------------------------------
 
@@ -173,10 +195,16 @@ RenderPass::RenderPass(HdRenderIndex* pRenderIndex, const HdRprimCollection& col
 
     NameVulkanObject(pRenderContext->GetDevice(), VK_OBJECT_TYPE_SAMPLER, reinterpret_cast<uint64_t>(m_DefaultSampler), "Default Sampler");
 
-    // Initialize Visibility Pass
+    // Initialize Passes
     // --------------------------------------
 
     VisibilityPassCreate(pRenderContext);
+
+    // --------------------------------------
+
+    MaterialPassCreate(pRenderContext);
+
+    // --------------------------------------
 }
 
 RenderPass::~RenderPass()
@@ -193,6 +221,10 @@ RenderPass::~RenderPass()
     vmaDestroyImage(pRenderContext->GetAllocator(), m_ColorAttachment.image, m_ColorAttachment.imageAllocation);
     vmaDestroyImage(pRenderContext->GetAllocator(), m_DepthAttachment.image, m_DepthAttachment.imageAllocation);
     vmaDestroyImage(pRenderContext->GetAllocator(), m_VisibilityBuffer.image, m_VisibilityBuffer.imageAllocation);
+
+    vmaDestroyBuffer(pRenderContext->GetAllocator(), m_MaterialCountBuffer.buffer, m_MaterialCountBuffer.bufferAllocation);
+    vmaDestroyBuffer(pRenderContext->GetAllocator(), m_MaterialOffsetBuffer.buffer, m_MaterialOffsetBuffer.bufferAllocation);
+    vmaDestroyBuffer(pRenderContext->GetAllocator(), m_MaterialPixelBuffer.buffer, m_MaterialPixelBuffer.bufferAllocation);
 
     vkDestroyPipelineLayout(pRenderContext->GetDevice(), m_VisibilityPipelineLayout, nullptr);
 

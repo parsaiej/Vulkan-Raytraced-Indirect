@@ -72,6 +72,16 @@ private:
     void VisibilityPassCreate(RenderContext* pRenderContext);
     void VisibilityPassExecute(RenderPassContext* pCtx);
 
+    // Material Pixel Pass
+    // ---------------------------------------
+
+    Buffer m_MaterialCountBuffer {};
+    Buffer m_MaterialOffsetBuffer {};
+    Buffer m_MaterialPixelBuffer {};
+
+    void MaterialPassCreate(RenderContext* pRenderContext);
+    void MaterialPassExecute();
+
     // GBuffer Pass
     // ---------------------------------------
 
