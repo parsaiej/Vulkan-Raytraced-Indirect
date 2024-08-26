@@ -379,6 +379,7 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
 
         m_VisibilityPushConstants.MeshCount = static_cast<uint32_t>(meshList.size());
 
+        // TODO(parsa): Go wide on all cores to record these commands on a secondary command list.
         for (uint32_t meshIndex = 0U; meshIndex < meshList.size(); meshIndex++)
         {
             auto* pMesh = meshList[meshIndex];
@@ -415,6 +416,10 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
     PROFILE_END;
 
     vkCmdEndRendering(pFrame->cmd);
+
+    // 2) Resolve G-Buffer from V-Buffer.
+
+    // 3) Lighting Pass
 
     // Copy the internal color attachment to back buffer.
 
