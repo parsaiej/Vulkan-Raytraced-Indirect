@@ -1,6 +1,3 @@
-#define SHADER_API_VULKAN
-#include "ShaderLibrary/Common.hlsl"
-
 struct Constants
 {
     float4x4 _MatrixMVP;
@@ -21,6 +18,6 @@ float4 Vert(VertexInput input) : SV_Position
 
 uint Frag(uint primitiveID : SV_PrimitiveID) : SV_Target
 {
-    // Warning: Bad things will happen for index count greater than 1 << 24u. 
-    return gConstants._MeshID << 24u | primitiveID;
+    // Warning: Bad things will happen for index count greater than 1 << 16u. 
+    return gConstants._MeshID << 16u | primitiveID;
 }

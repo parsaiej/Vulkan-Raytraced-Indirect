@@ -56,8 +56,8 @@ void Main(uint3 dispatchThreadID : SV_DispatchThreadID)
     uint visibilityData = _VisibilityBuffer.Load(uint3(dispatchThreadID.xy, 0u));
 
     // Decode the mesh index and primitive index.
-    uint meshIndex = visibilityData >> 24u;
-    uint primIndex = visibilityData & 0xFFFFFF;
+    uint meshIndex = visibilityData >> 16u;
+    uint primIndex = visibilityData & 0xFFFF;
 
     // Read off the mesh meta-data.
     uint2 meshMetaData = _MeshMetadatas.Load2(meshIndex << 3u);
