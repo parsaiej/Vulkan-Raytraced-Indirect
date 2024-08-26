@@ -241,50 +241,6 @@ void CreateMaterialDescriptor(RenderContext*                      pRenderContext
     vkUpdateDescriptorSets(pRenderContext->GetDevice(), static_cast<uint32_t>(descriptorSetWrites.size()), descriptorSetWrites.data(), 0U, nullptr);
 }
 
-/*
-void CreateMeshDataDescriptor(RenderContext*                         pRenderContext,
-                              const ResourceRegistry::MeshResources& mesh,
-                              VkDescriptorSetLayout                  vkDescriptorSetLayout,
-                              VkDescriptorSet*                       pDescriptorSet)
-{
-    VkDescriptorSetAllocateInfo descriptorSetAllocationInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
-    {
-        descriptorSetAllocationInfo.descriptorPool     = pRenderContext->GetDescriptorPool();
-        descriptorSetAllocationInfo.descriptorSetCount = 1U;
-        descriptorSetAllocationInfo.pSetLayouts        = &vkDescriptorSetLayout;
-    }
-    Check(vkAllocateDescriptorSets(pRenderContext->GetDevice(), &descriptorSetAllocationInfo, pDescriptorSet),
-          "Failed to allocate mesh data descriptors.");
-
-    // Update the descriptor sets.
-    std::vector<VkDescriptorBufferInfo> descriptorBufferInfos;
-    std::vector<VkWriteDescriptorSet>   descriptorSetWrites;
-
-    // Import to note invalidate the back() pointer as we push images.
-    descriptorBufferInfos.reserve(1U);
-
-    auto PushStorageBuffer = [&](const Buffer& storageBuffer)
-    {
-        // descriptorBufferInfos.push_back(Vkl(VK_NULL_HANDLE, sampledImage.imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
-        descriptorBufferInfos.push_back(VkDescriptorBufferInfo(storageBuffer.buffer, 0U, VK_WHOLE_SIZE));
-
-        VkWriteDescriptorSet writeInfo = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
-        {
-            writeInfo.descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-            writeInfo.descriptorCount = 1U;
-            writeInfo.dstBinding      = static_cast<uint32_t>(descriptorSetWrites.size());
-            writeInfo.dstSet          = *pDescriptorSet;
-            writeInfo.pBufferInfo     = &descriptorBufferInfos.back();
-        }
-        descriptorSetWrites.push_back(writeInfo);
-    };
-
-    PushStorageBuffer(mesh.texCoords);
-
-    vkUpdateDescriptorSets(pRenderContext->GetDevice(), static_cast<uint32_t>(descriptorSetWrites.size()), descriptorSetWrites.data(), 0U, nullptr);
-}
-*/
-
 void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, const TfTokenVector& renderTags)
 {
     // Grab the render context.
