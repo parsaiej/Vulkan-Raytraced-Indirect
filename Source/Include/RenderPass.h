@@ -59,6 +59,8 @@ private:
     // Visibility Pass
     // ---------------------------------------
 
+    Image m_VisibilityBuffer {};
+
     VkPipelineLayout m_VisibilityPipelineLayout;
 
     VisibilityPushConstants m_VisibilityPushConstants {};

@@ -96,6 +96,51 @@ void RenderPass::VisibilityPassCreate(RenderContext* pRenderContext)
         attribute.format   = VK_FORMAT_R32G32B32_SFLOAT;
     }
     m_VertexInputAttributes.push_back(attribute);
+
+    // Create Visibility Buffer
+    // ------------------------------------------------
+
+    VkImageCreateInfo visibilityBufferInfo = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
+    {
+        visibilityBufferInfo.imageType     = VK_IMAGE_TYPE_2D;
+        visibilityBufferInfo.arrayLayers   = 1U;
+        visibilityBufferInfo.format        = VK_FORMAT_R32_UINT;
+        visibilityBufferInfo.samples       = VK_SAMPLE_COUNT_1_BIT;
+        visibilityBufferInfo.usage         = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
+        visibilityBufferInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        visibilityBufferInfo.extent        = { kWindowWidth, kWindowHeight, 1 };
+        visibilityBufferInfo.mipLevels     = 1U;
+        visibilityBufferInfo.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
+        visibilityBufferInfo.tiling        = VK_IMAGE_TILING_OPTIMAL;
+        visibilityBufferInfo.flags         = 0x0;
+    }
+
+    VmaAllocationCreateInfo imageAllocInfo = {};
+    {
+        imageAllocInfo.usage = VMA_MEMORY_USAGE_AUTO;
+    }
+
+    Check(vmaCreateImage(pRenderContext->GetAllocator(),
+                         &visibilityBufferInfo,
+                         &imageAllocInfo,
+                         &m_VisibilityBuffer.image,
+                         &m_VisibilityBuffer.imageAllocation,
+                         VK_NULL_HANDLE),
+          "Failed to create attachment allocation.");
+
+    VkImageViewCreateInfo imageViewInfo = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
+    {
+        imageViewInfo.image                           = m_VisibilityBuffer.image;
+        imageViewInfo.viewType                        = VK_IMAGE_VIEW_TYPE_2D;
+        imageViewInfo.format                          = visibilityBufferInfo.format;
+        imageViewInfo.subresourceRange.levelCount     = 1U;
+        imageViewInfo.subresourceRange.layerCount     = 1U;
+        imageViewInfo.subresourceRange.baseMipLevel   = 0U;
+        imageViewInfo.subresourceRange.baseArrayLayer = 0U;
+        imageViewInfo.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+    }
+    Check(vkCreateImageView(pRenderContext->GetDevice(), &imageViewInfo, nullptr, &m_VisibilityBuffer.imageView),
+          "Failed to create attachment view.");
 }
 
 // Render Pass Implementation
@@ -143,9 +188,11 @@ RenderPass::~RenderPass()
 
     vkDestroyImageView(pRenderContext->GetDevice(), m_ColorAttachment.imageView, nullptr);
     vkDestroyImageView(pRenderContext->GetDevice(), m_DepthAttachment.imageView, nullptr);
+    vkDestroyImageView(pRenderContext->GetDevice(), m_VisibilityBuffer.imageView, nullptr);
 
     vmaDestroyImage(pRenderContext->GetAllocator(), m_ColorAttachment.image, m_ColorAttachment.imageAllocation);
     vmaDestroyImage(pRenderContext->GetAllocator(), m_DepthAttachment.image, m_DepthAttachment.imageAllocation);
+    vmaDestroyImage(pRenderContext->GetAllocator(), m_VisibilityBuffer.image, m_VisibilityBuffer.imageAllocation);
 
     vkDestroyPipelineLayout(pRenderContext->GetDevice(), m_VisibilityPipelineLayout, nullptr);
 
@@ -162,11 +209,13 @@ void RenderPass::VisibilityPassExecute(RenderPassContext* pCtx)
 
     VkRenderingAttachmentInfo colorAttachmentInfo = { VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
     {
-        colorAttachmentInfo.loadOp      = VK_ATTACHMENT_LOAD_OP_CLEAR;
-        colorAttachmentInfo.storeOp     = VK_ATTACHMENT_STORE_OP_STORE;
-        colorAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-        colorAttachmentInfo.imageView   = m_ColorAttachment.imageView;
-        colorAttachmentInfo.clearValue  = { { { 0.0, 0.0, 0.0, 1.0 } } };
+        colorAttachmentInfo.loadOp           = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        colorAttachmentInfo.storeOp          = VK_ATTACHMENT_STORE_OP_STORE;
+        colorAttachmentInfo.imageLayout      = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        colorAttachmentInfo.imageView        = m_VisibilityBuffer.imageView;
+        colorAttachmentInfo.clearValue.color = {
+            { 0U, 0U, 0U, 0U }
+        };
     }
 
     VkRenderingAttachmentInfo depthAttachmentInfo = { VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
