@@ -8,7 +8,7 @@
 
 struct Constants
 {
-    float4x4 _MatrixMVP;
+    float2 _ViewportSize;
 };
 [[vk::push_constant]] Constants gConstants;
 
@@ -63,10 +63,15 @@ void Main(uint3 dispatchThreadID : SV_DispatchThreadID)
     uint2 meshMetaData = _MeshMetadatas.Load2(meshIndex << 3u);
 
     // Read off the triangle indices.
-    uint3 triangleIndices = _IndexBuffers[NonUniformResourceIndex(meshMetaData.x)].Load3((3u * primIndex) << 4u);
+    uint3 triangleIndices = _IndexBuffers[NonUniformResourceIndex(meshMetaData.x)].Load3((3u * primIndex) << 2u);
 
-    // Construct the barycentric coordinate + partial derivatives.
-    // TODO
+    // Load triangle positions.
+    float4 positionH0 = _HomogenousCoordinateBuffers[NonUniformResourceIndex(meshMetaData.y)].Load4(triangleIndices.x << 4u);
+    float4 positionH1 = _HomogenousCoordinateBuffers[NonUniformResourceIndex(meshMetaData.y)].Load4(triangleIndices.y << 4u);
+    float4 positionH2 = _HomogenousCoordinateBuffers[NonUniformResourceIndex(meshMetaData.y)].Load4(triangleIndices.z << 4u);
+
+    // Compute the barycentric coordinate + partial derivatives.
+    Barycentric::Data barycentric = Barycentric::Compute(positionH0, positionH1, positionH2, float2(0, 0), gConstants._ViewportSize);
 
     // Force compiler to resolve all instructions while drafting.
     _DummyOutput.Store3(0u, triangleIndices);

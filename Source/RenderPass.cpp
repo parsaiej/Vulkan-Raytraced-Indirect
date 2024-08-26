@@ -130,6 +130,14 @@ RenderPass::RenderPass(HdRenderIndex* pRenderIndex, const HdRprimCollection& col
     }
     LoadShader(ShaderID::VisibilityFrag, "Visibility.frag.spv", "Frag", visShaderInfo);
 
+    VkShaderCreateInfoEXT gbufferResolveShaderInfo = { VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT };
+    {
+        gbufferResolveShaderInfo.stage                  = VK_SHADER_STAGE_COMPUTE_BIT;
+        gbufferResolveShaderInfo.pushConstantRangeCount = 1U;
+        gbufferResolveShaderInfo.pPushConstantRanges    = &vkPushConstants;
+    }
+    LoadShader(ShaderID::GBufferResolveComp, "GBuffer.comp.spv", "Main", gbufferResolveShaderInfo);
+
     // Vertex Input Layout
     // ------------------------------------------------
 

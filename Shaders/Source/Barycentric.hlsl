@@ -2,10 +2,10 @@
 #define BARYCENTRIC_H
 
 // Barycentric Coordinate + Interp Util
-// Ref: http://filmicworlds.com/blog/visibility-buffer-rendering-with-material-graphs/
+// Adapted from: http://filmicworlds.com/blog/visibility-buffer-rendering-with-material-graphs/
 // ---------------------------------
 
-namespace Barycentrics
+namespace Barycentric
 {
     struct Data
     {
