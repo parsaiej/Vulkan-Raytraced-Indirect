@@ -11,7 +11,8 @@ enum ShaderID
 {
     FullscreenTriangleVert,
     VisibilityFrag,
-    MeshVert
+    MeshVert,
+    GBufferResolveComp
 };
 
 struct VisibilityPushConstants
