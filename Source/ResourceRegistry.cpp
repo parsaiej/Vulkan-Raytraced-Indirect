@@ -79,6 +79,8 @@ ResourceRegistry::ResourceRegistry(RenderContext* pRenderContext) : m_RenderCont
     }
     Check(vkCreateCommandPool(pRenderContext->GetDevice(), &vkCommandPoolInfo, nullptr, &m_ResourceCreationCommandPool),
           "Failed to create a Resource Creation Command Pool");
+
+    m_CommitJobComplete.store(false);
 }
 
 // Local utility for emplacing an alpha value every 12 bytes.
@@ -379,6 +381,7 @@ void ResourceRegistry::CommitJob()
     vmaDestroyBuffer(m_RenderContext->GetAllocator(), stagingBuffer.buffer, stagingBuffer.bufferAllocation);
 
     m_CommitJobBusy.store(false);
+    m_CommitJobComplete.store(true);
 }
 
 void ResourceRegistry::_Commit()

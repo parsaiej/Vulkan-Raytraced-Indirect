@@ -6,8 +6,77 @@
 #include <Scene.h>
 #include <Material.h>
 
-void GetVertexInputLayout(std::vector<VkVertexInputBindingDescription2EXT>& bindings, std::vector<VkVertexInputAttributeDescription2EXT>& attributes)
+// Shader Creation Utility
+// ------------------------------------------------
+
+void RenderPass::LoadShader(ShaderID shaderID, const char* filePath, const char* entryName, VkShaderCreateInfoEXT vkShaderInfo)
 {
+    // Grab the render context.
+    auto* pRenderContext = m_Owner->GetRenderContext();
+
+    std::vector<char> shaderByteCode;
+    Check(LoadByteCode(filePath, shaderByteCode), std::format("Failed to read shader bytecode: {}", filePath).c_str());
+
+    vkShaderInfo.pName    = entryName;
+    vkShaderInfo.pCode    = shaderByteCode.data();
+    vkShaderInfo.codeSize = shaderByteCode.size();
+    vkShaderInfo.codeType = VK_SHADER_CODE_TYPE_SPIRV_EXT;
+
+    VkShaderEXT vkShader = VK_NULL_HANDLE;
+    Check(vkCreateShadersEXT(pRenderContext->GetDevice(), 1U, &vkShaderInfo, nullptr, &vkShader),
+          std::format("Failed to load Vulkan Shader: {}", filePath).c_str());
+    Check(!m_ShaderMap.contains(shaderID), "Tried to store a Vulkan Shader into an existing shader slot.");
+
+    spdlog::info("Loaded Vulkan Shader: {}", filePath);
+
+    m_ShaderMap[shaderID] = vkShader;
+};
+
+void RenderPass::VisibilityPassCreate(RenderContext* pRenderContext)
+{
+    // Pipeline Layout
+    // --------------------------------------
+
+    VkPushConstantRange pushConstantRange;
+    {
+        pushConstantRange.offset     = 0U;
+        pushConstantRange.size       = sizeof(VisibilityPushConstants);
+        pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+    }
+
+    VkPipelineLayoutCreateInfo pipelineInfo = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
+    {
+        pipelineInfo.pushConstantRangeCount = 1U;
+        pipelineInfo.pPushConstantRanges    = &pushConstantRange;
+    }
+    Check(vkCreatePipelineLayout(pRenderContext->GetDevice(), &pipelineInfo, nullptr, &m_VisibilityPipelineLayout),
+          "Failed to create pipeline layout for visibility pipeline.");
+
+    // Shaders
+    // --------------------------------------
+
+    VkShaderCreateInfoEXT vertexShaderInfo = { VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT };
+    {
+        vertexShaderInfo.stage     = VK_SHADER_STAGE_VERTEX_BIT;
+        vertexShaderInfo.nextStage = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+        vertexShaderInfo.pushConstantRangeCount = 1U;
+        vertexShaderInfo.pPushConstantRanges    = &pushConstantRange;
+    }
+    LoadShader(ShaderID::MeshVert, "Visibility.vert.spv", "Vert", vertexShaderInfo);
+
+    VkShaderCreateInfoEXT visShaderInfo = { VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT };
+    {
+        visShaderInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+        visShaderInfo.pushConstantRangeCount = 1U;
+        visShaderInfo.pPushConstantRanges    = &pushConstantRange;
+    }
+    LoadShader(ShaderID::VisibilityFrag, "Visibility.frag.spv", "Frag", visShaderInfo);
+
+    // Vertex Input Layout
+    // ------------------------------------------------
+
     VkVertexInputBindingDescription2EXT binding = { VK_STRUCTURE_TYPE_VERTEX_INPUT_BINDING_DESCRIPTION_2_EXT };
 
     {
@@ -16,7 +85,7 @@ void GetVertexInputLayout(std::vector<VkVertexInputBindingDescription2EXT>& bind
         binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
         binding.divisor   = 1U;
     }
-    bindings.push_back(binding);
+    m_VertexInputBindings.push_back(binding);
 
     VkVertexInputAttributeDescription2EXT attribute = { VK_STRUCTURE_TYPE_VERTEX_INPUT_ATTRIBUTE_DESCRIPTION_2_EXT };
 
@@ -26,7 +95,7 @@ void GetVertexInputLayout(std::vector<VkVertexInputBindingDescription2EXT>& bind
         attribute.offset   = 0U;
         attribute.format   = VK_FORMAT_R32G32B32_SFLOAT;
     }
-    attributes.push_back(attribute);
+    m_VertexInputAttributes.push_back(attribute);
 }
 
 // Render Pass Implementation
@@ -43,102 +112,8 @@ RenderPass::RenderPass(HdRenderIndex* pRenderIndex, const HdRprimCollection& col
 
     Check(CreateRenderingAttachments(pRenderContext, m_ColorAttachment, m_DepthAttachment), "Failed to create the rendering attachments.");
 
-    // Configure Descriptor Set Layouts
-    // --------------------------------------
-
-    m_DescriptorSetLayouts.resize(2U);
-
-    Check(CreatePhysicallyBasedMaterialDescriptorLayout(pRenderContext->GetDevice(), m_DescriptorSetLayouts[0]),
-          "Failed to create a Vulkan Descriptor Set Layout for Physically Based "
-          "Materials.");
-
-    Check(CreateMeshDataDescriptorLayout(pRenderContext->GetDevice(), m_DescriptorSetLayouts[1]),
-          "Failed to create a Vulkan Descriptor Set Layout for Mesh Data.");
-
     // Obtain the resource registry
     auto pResourceRegistry = std::static_pointer_cast<ResourceRegistry>(m_Owner->GetResourceRegistry());
-
-    // Shader Creation Utility
-    // ------------------------------------------------
-
-    auto LoadShader = [&](ShaderID shaderID, const char* filePath, const char* entryName, VkShaderCreateInfoEXT vkShaderInfo)
-    {
-        std::vector<char> shaderByteCode;
-        Check(LoadByteCode(filePath, shaderByteCode), std::format("Failed to read shader bytecode: {}", filePath).c_str());
-
-        vkShaderInfo.pName    = entryName;
-        vkShaderInfo.pCode    = shaderByteCode.data();
-        vkShaderInfo.codeSize = shaderByteCode.size();
-        vkShaderInfo.codeType = VK_SHADER_CODE_TYPE_SPIRV_EXT;
-
-        VkShaderEXT vkShader = VK_NULL_HANDLE;
-        Check(vkCreateShadersEXT(pRenderContext->GetDevice(), 1U, &vkShaderInfo, nullptr, &vkShader),
-              std::format("Failed to load Vulkan Shader: {}", filePath).c_str());
-        Check(!m_ShaderMap.contains(shaderID), "Tried to store a Vulkan Shader into an existing shader slot.");
-
-        spdlog::info("Loaded Vulkan Shader: {}", filePath);
-
-        m_ShaderMap[shaderID] = vkShader;
-    };
-
-    // Configure Push Constants
-    // --------------------------------------
-
-    VkPushConstantRange vkPushConstants;
-    {
-        vkPushConstants.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-        vkPushConstants.offset     = 0U;
-        vkPushConstants.size       = sizeof(VisibilityPushConstants);
-    }
-
-    // Configure Pipeline Layouts
-    // --------------------------------------
-
-    VkPipelineLayoutCreateInfo vkPipelineLayoutInfo = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
-    {
-        vkPipelineLayoutInfo.setLayoutCount         = static_cast<uint32_t>(m_DescriptorSetLayouts.size());
-        vkPipelineLayoutInfo.pSetLayouts            = m_DescriptorSetLayouts.data();
-        vkPipelineLayoutInfo.pushConstantRangeCount = 1U;
-        vkPipelineLayoutInfo.pPushConstantRanges    = &vkPushConstants;
-    }
-    Check(vkCreatePipelineLayout(pRenderContext->GetDevice(), &vkPipelineLayoutInfo, nullptr, &m_PipelineLayout),
-          "Failed to create the default Vulkan Pipeline Layout");
-
-    // Create Shader Objects
-    // --------------------------------------
-
-    VkShaderCreateInfoEXT vertexShaderInfo = { VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT };
-    {
-        vertexShaderInfo.stage     = VK_SHADER_STAGE_VERTEX_BIT;
-        vertexShaderInfo.nextStage = VK_SHADER_STAGE_FRAGMENT_BIT;
-
-        vertexShaderInfo.pushConstantRangeCount = 1U;
-        vertexShaderInfo.pPushConstantRanges    = &vkPushConstants;
-        vertexShaderInfo.setLayoutCount         = static_cast<uint32_t>(m_DescriptorSetLayouts.size());
-        vertexShaderInfo.pSetLayouts            = m_DescriptorSetLayouts.data();
-    }
-    LoadShader(ShaderID::MeshVert, "Visibility.vert.spv", "Vert", vertexShaderInfo);
-
-    VkShaderCreateInfoEXT visShaderInfo = { VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT };
-    {
-        visShaderInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-
-        visShaderInfo.pushConstantRangeCount = 1U;
-        visShaderInfo.pPushConstantRanges    = &vkPushConstants;
-        visShaderInfo.setLayoutCount         = static_cast<uint32_t>(m_DescriptorSetLayouts.size());
-        visShaderInfo.pSetLayouts            = m_DescriptorSetLayouts.data();
-    }
-    LoadShader(ShaderID::VisibilityFrag, "Visibility.frag.spv", "Frag", visShaderInfo);
-
-    // Vertex Input Layout
-    // ------------------------------------------------
-
-    GetVertexInputLayout(m_VertexInputBindings, m_VertexInputAttributes);
-
-    // Configure Push Constants
-    // ------------------------------------------------
-
-    m_VisibilityPushConstants = {};
 
     // Create default sampler.
     // ------------------------------------------------
@@ -152,6 +127,11 @@ RenderPass::RenderPass(HdRenderIndex* pRenderIndex, const HdRprimCollection& col
     vkCreateSampler(pRenderContext->GetDevice(), &defaultSamplerInfo, nullptr, &m_DefaultSampler);
 
     NameVulkanObject(pRenderContext->GetDevice(), VK_OBJECT_TYPE_SAMPLER, reinterpret_cast<uint64_t>(m_DefaultSampler), "Default Sampler");
+
+    // Initialize Visibility Pass
+    // --------------------------------------
+
+    VisibilityPassCreate(pRenderContext);
 }
 
 RenderPass::~RenderPass()
@@ -167,10 +147,7 @@ RenderPass::~RenderPass()
     vmaDestroyImage(pRenderContext->GetAllocator(), m_ColorAttachment.image, m_ColorAttachment.imageAllocation);
     vmaDestroyImage(pRenderContext->GetAllocator(), m_DepthAttachment.image, m_DepthAttachment.imageAllocation);
 
-    vkDestroyPipelineLayout(pRenderContext->GetDevice(), m_PipelineLayout, nullptr);
-
-    for (auto& setLayout : m_DescriptorSetLayouts)
-        vkDestroyDescriptorSetLayout(pRenderContext->GetDevice(), setLayout, nullptr);
+    vkDestroyPipelineLayout(pRenderContext->GetDevice(), m_VisibilityPipelineLayout, nullptr);
 
     for (auto& shader : m_ShaderMap)
         vkDestroyShaderEXT(pRenderContext->GetDevice(), shader.second, nullptr);
@@ -178,121 +155,8 @@ RenderPass::~RenderPass()
     vkDestroySampler(pRenderContext->GetDevice(), m_DefaultSampler, nullptr);
 }
 
-void CreateMaterialDescriptor(RenderContext*                      pRenderContext,
-                              VkSampler                           defaultSampler,
-                              ResourceRegistry::MaterialResources materialResources,
-                              VkDescriptorSetLayout               vkDescriptorSetLayout,
-                              VkDescriptorSet*                    pDescriptorSet)
+void RenderPass::VisibilityPassExecute(RenderPassContext* pCtx)
 {
-    VkDescriptorSetAllocateInfo descriptorSetAllocationInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
-    {
-        descriptorSetAllocationInfo.descriptorPool     = pRenderContext->GetDescriptorPool();
-        descriptorSetAllocationInfo.descriptorSetCount = 1U;
-        descriptorSetAllocationInfo.pSetLayouts        = &vkDescriptorSetLayout;
-    }
-    Check(vkAllocateDescriptorSets(pRenderContext->GetDevice(), &descriptorSetAllocationInfo, pDescriptorSet),
-          "Failed to allocate material descriptors.");
-
-    // Update the descriptor sets.
-    std::vector<VkDescriptorImageInfo> descriptorImageInfos;
-    std::vector<VkWriteDescriptorSet>  descriptorSetWrites;
-
-    // Import to note invalidate the back() pointer as we push images.
-    descriptorImageInfos.reserve(4U);
-
-    auto PushSampledImage = [&](const Image& sampledImage)
-    {
-        descriptorImageInfos.push_back(VkDescriptorImageInfo(VK_NULL_HANDLE, sampledImage.imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
-
-        VkWriteDescriptorSet writeInfo = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
-        {
-            writeInfo.descriptorType  = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-            writeInfo.descriptorCount = 1U;
-            writeInfo.dstBinding      = static_cast<uint32_t>(descriptorSetWrites.size());
-            writeInfo.dstSet          = *pDescriptorSet;
-            writeInfo.pImageInfo      = &descriptorImageInfos.back();
-        }
-        descriptorSetWrites.push_back(writeInfo);
-    };
-
-    // WARNING: Match the layout defined in Common::CreatePhysicallyBasedMaterialDescriptorLayout
-    PushSampledImage(materialResources.albedo);
-    PushSampledImage(materialResources.normal);
-    PushSampledImage(materialResources.metallic);
-    PushSampledImage(materialResources.roughness);
-
-    // Also push the sampler.
-
-    VkDescriptorImageInfo descriptorSamplerInfo;
-    {
-        descriptorSamplerInfo.sampler = defaultSampler;
-    }
-
-    VkWriteDescriptorSet writeInfo = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
-    {
-        writeInfo.descriptorType  = VK_DESCRIPTOR_TYPE_SAMPLER;
-        writeInfo.descriptorCount = 1U;
-        writeInfo.dstBinding      = static_cast<uint32_t>(descriptorSetWrites.size());
-        writeInfo.dstSet          = *pDescriptorSet;
-        writeInfo.pImageInfo      = &descriptorSamplerInfo;
-    }
-    descriptorSetWrites.push_back(writeInfo);
-
-    vkUpdateDescriptorSets(pRenderContext->GetDevice(), static_cast<uint32_t>(descriptorSetWrites.size()), descriptorSetWrites.data(), 0U, nullptr);
-}
-
-/*
-void CreateMeshDataDescriptor(RenderContext*                         pRenderContext,
-                              const ResourceRegistry::MeshResources& mesh,
-                              VkDescriptorSetLayout                  vkDescriptorSetLayout,
-                              VkDescriptorSet*                       pDescriptorSet)
-{
-    VkDescriptorSetAllocateInfo descriptorSetAllocationInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
-    {
-        descriptorSetAllocationInfo.descriptorPool     = pRenderContext->GetDescriptorPool();
-        descriptorSetAllocationInfo.descriptorSetCount = 1U;
-        descriptorSetAllocationInfo.pSetLayouts        = &vkDescriptorSetLayout;
-    }
-    Check(vkAllocateDescriptorSets(pRenderContext->GetDevice(), &descriptorSetAllocationInfo, pDescriptorSet),
-          "Failed to allocate mesh data descriptors.");
-
-    // Update the descriptor sets.
-    std::vector<VkDescriptorBufferInfo> descriptorBufferInfos;
-    std::vector<VkWriteDescriptorSet>   descriptorSetWrites;
-
-    // Import to note invalidate the back() pointer as we push images.
-    descriptorBufferInfos.reserve(1U);
-
-    auto PushStorageBuffer = [&](const Buffer& storageBuffer)
-    {
-        // descriptorBufferInfos.push_back(Vkl(VK_NULL_HANDLE, sampledImage.imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
-        descriptorBufferInfos.push_back(VkDescriptorBufferInfo(storageBuffer.buffer, 0U, VK_WHOLE_SIZE));
-
-        VkWriteDescriptorSet writeInfo = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
-        {
-            writeInfo.descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-            writeInfo.descriptorCount = 1U;
-            writeInfo.dstBinding      = static_cast<uint32_t>(descriptorSetWrites.size());
-            writeInfo.dstSet          = *pDescriptorSet;
-            writeInfo.pBufferInfo     = &descriptorBufferInfos.back();
-        }
-        descriptorSetWrites.push_back(writeInfo);
-    };
-
-    PushStorageBuffer(mesh.texCoords);
-
-    vkUpdateDescriptorSets(pRenderContext->GetDevice(), static_cast<uint32_t>(descriptorSetWrites.size()), descriptorSetWrites.data(), 0U, nullptr);
-}
-*/
-
-void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, const TfTokenVector& renderTags)
-{
-    // Grab the render context.
-    auto* pRenderContext = m_Owner->GetRenderContext();
-
-    // Grab a handle to the current frame.
-    auto* pFrame = m_Owner->GetRenderSetting(kTokenCurrenFrameParams).UncheckedGet<FrameParams*>();
-
     // Configure Attachments
     // --------------------------------------------
 
@@ -314,18 +178,6 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
         depthAttachmentInfo.clearValue.depthStencil = { 1.0, 0x0 };
     }
 
-    // 1) Visibility Buffer
-    // --------------------------------------------
-
-    VulkanColorImageBarrier(pFrame->cmd,
-                            m_ColorAttachment.image,
-                            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                            VK_ACCESS_2_MEMORY_READ_BIT,
-                            VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-                            VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-                            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT);
-
     VkRenderingInfo vkRenderingInfo = { VK_STRUCTURE_TYPE_RENDERING_INFO };
     {
         vkRenderingInfo.colorAttachmentCount = 1U;
@@ -338,7 +190,7 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
             { kWindowWidth, kWindowHeight }
         };
     }
-    vkCmdBeginRendering(pFrame->cmd, &vkRenderingInfo);
+    vkCmdBeginRendering(pCtx->pFrame->cmd, &vkRenderingInfo);
 
     std::array<VkShaderStageFlagBits, 5> vkGraphicsShaderStageBits = { VK_SHADER_STAGE_VERTEX_BIT,
                                                                        VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT,
@@ -352,70 +204,86 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
                                                      VK_NULL_HANDLE,
                                                      m_ShaderMap[ShaderID::VisibilityFrag] };
 
-    vkCmdBindShadersEXT(pFrame->cmd,
+    vkCmdBindShadersEXT(pCtx->pFrame->cmd,
                         static_cast<uint32_t>(vkGraphicsShaderStageBits.size()),
                         vkGraphicsShaderStageBits.data(),
                         vkGraphicsShaders.data());
 
-    SetDefaultRenderState(pFrame->cmd);
+    SetDefaultRenderState(pCtx->pFrame->cmd);
 
-    vkCmdSetVertexInputEXT(pFrame->cmd,
+    vkCmdSetVertexInputEXT(pCtx->pFrame->cmd,
                            static_cast<uint32_t>(m_VertexInputBindings.size()),
                            m_VertexInputBindings.data(),
                            static_cast<uint32_t>(m_VertexInputAttributes.size()),
                            m_VertexInputAttributes.data());
 
-    auto* pScene     = pRenderContext->GetScene();
-    auto  pResources = std::static_pointer_cast<ResourceRegistry>(m_Owner->GetResourceRegistry());
-
     // Update camera matrices.
-    auto matrixVP = GfMatrix4f(renderPassState->GetWorldToViewMatrix()) * GfMatrix4f(renderPassState->GetProjectionMatrix());
+    auto matrixVP = GfMatrix4f(pCtx->pPassState->GetWorldToViewMatrix()) * GfMatrix4f(pCtx->pPassState->GetProjectionMatrix());
 
-    PROFILE_START("Record Visibility Buffer");
+    PROFILE_START("Record Visibility Buffer Commands");
 
-    auto RenderSceneMeshList = [&]()
+    const auto& meshList = pCtx->pScene->GetMeshList();
+
+    m_VisibilityPushConstants.MeshCount = static_cast<uint32_t>(meshList.size());
+
+    // TODO(parsa): Go wide on all cores to record these commands on a secondary command list.
+    for (uint32_t meshIndex = 0U; meshIndex < meshList.size(); meshIndex++)
     {
-        const auto& meshList = pScene->GetMeshList();
+        auto* pMesh = meshList[meshIndex];
 
-        m_VisibilityPushConstants.MeshCount = static_cast<uint32_t>(meshList.size());
+        ResourceRegistry::MeshResources mesh;
+        if (!pCtx->pResourceRegistry->GetMeshResources(pMesh->GetResourceHandle(), mesh))
+            return;
 
-        // TODO(parsa): Go wide on all cores to record these commands on a secondary command list.
-        for (uint32_t meshIndex = 0U; meshIndex < meshList.size(); meshIndex++)
-        {
-            auto* pMesh = meshList[meshIndex];
+        vkCmdBindIndexBuffer(pCtx->pFrame->cmd, mesh.indices.buffer, 0U, VK_INDEX_TYPE_UINT32);
 
-            ResourceRegistry::MeshResources mesh;
-            if (!pResources->GetMeshResources(pMesh->GetResourceHandle(), mesh))
-                return;
+        std::array<VkDeviceSize, 1> vertexBufferOffset = { 0U };
+        std::array<VkBuffer, 1>     vertexBuffers      = { mesh.positions.buffer };
 
-            vkCmdBindIndexBuffer(pFrame->cmd, mesh.indices.buffer, 0U, VK_INDEX_TYPE_UINT32);
+        vkCmdBindVertexBuffers(pCtx->pFrame->cmd, 0U, 1U, vertexBuffers.data(), vertexBufferOffset.data());
 
-            std::array<VkDeviceSize, 1> vertexBufferOffset = { 0U };
-            std::array<VkBuffer, 1>     vertexBuffers      = { mesh.positions.buffer };
+        m_VisibilityPushConstants.MatrixMVP = pMesh->GetLocalToWorld() * matrixVP;
+        m_VisibilityPushConstants.MeshID    = meshIndex;
 
-            vkCmdBindVertexBuffers(pFrame->cmd, 0U, 1U, vertexBuffers.data(), vertexBufferOffset.data());
+        vkCmdPushConstants(pCtx->pFrame->cmd,
+                           m_VisibilityPipelineLayout,
+                           VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                           0U,
+                           sizeof(VisibilityPushConstants),
+                           &m_VisibilityPushConstants);
 
-            m_VisibilityPushConstants.MatrixMVP = pMesh->GetLocalToWorld() * matrixVP;
-            m_VisibilityPushConstants.MeshID    = meshIndex;
-
-            vkCmdPushConstants(pFrame->cmd,
-                               m_PipelineLayout,
-                               VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-                               0U,
-                               sizeof(VisibilityPushConstants),
-                               &m_VisibilityPushConstants);
-
-            vkCmdDrawIndexed(pFrame->cmd, pMesh->GetIndexCount(), 1U, 0U, 0U, 0U);
-        }
-    };
-
-    // Warning: not really robust yet since the meshes could be added to scene before resource system is kicked off.
-    if (!pResources->IsBusy())
-        RenderSceneMeshList();
+        vkCmdDrawIndexed(pCtx->pFrame->cmd, pMesh->GetIndexCount(), 1U, 0U, 0U, 0U);
+    }
 
     PROFILE_END;
 
-    vkCmdEndRendering(pFrame->cmd);
+    vkCmdEndRendering(pCtx->pFrame->cmd);
+}
+
+void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, const TfTokenVector& renderTags)
+{
+    RenderPassContext ctx {};
+    {
+        ctx.pRenderContext    = m_Owner->GetRenderContext();
+        ctx.pFrame            = m_Owner->GetRenderSetting(kTokenCurrenFrameParams).UncheckedGet<FrameParams*>();
+        ctx.pScene            = m_Owner->GetRenderContext()->GetScene();
+        ctx.pPassState        = renderPassState.get();
+        ctx.pResourceRegistry = std::static_pointer_cast<ResourceRegistry>(m_Owner->GetResourceRegistry()).get();
+    };
+
+    VulkanColorImageBarrier(ctx.pFrame->cmd,
+                            m_ColorAttachment.image,
+                            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                            VK_ACCESS_2_MEMORY_READ_BIT,
+                            VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+                            VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT);
+
+    // 1) Rasterize V-Buffer
+
+    if (ctx.pResourceRegistry->IsComplete())
+        VisibilityPassExecute(&ctx);
 
     // 2) Resolve G-Buffer from V-Buffer.
 
@@ -423,7 +291,7 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
 
     // Copy the internal color attachment to back buffer.
 
-    VulkanColorImageBarrier(pFrame->cmd,
+    VulkanColorImageBarrier(ctx.pFrame->cmd,
                             m_ColorAttachment.image,
                             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                             VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
@@ -432,8 +300,8 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
                             VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
                             VK_PIPELINE_STAGE_2_TRANSFER_BIT);
 
-    VulkanColorImageBarrier(pFrame->cmd,
-                            pFrame->backBuffer,
+    VulkanColorImageBarrier(ctx.pFrame->cmd,
+                            ctx.pFrame->backBuffer,
                             VK_IMAGE_LAYOUT_UNDEFINED,
                             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                             VK_ACCESS_2_MEMORY_READ_BIT,
@@ -448,16 +316,16 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
         backBufferCopy.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0U, 0U, 1U };
     }
 
-    vkCmdCopyImage(pFrame->cmd,
+    vkCmdCopyImage(ctx.pFrame->cmd,
                    m_ColorAttachment.image,
                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                   pFrame->backBuffer,
+                   ctx.pFrame->backBuffer,
                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                    1U,
                    &backBufferCopy);
 
-    VulkanColorImageBarrier(pFrame->cmd,
-                            pFrame->backBuffer,
+    VulkanColorImageBarrier(ctx.pFrame->cmd,
+                            ctx.pFrame->backBuffer,
                             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                             VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
                             VK_ACCESS_2_MEMORY_WRITE_BIT,

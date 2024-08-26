@@ -59,6 +59,7 @@ public:
     bool GetMaterialResources(uint64_t resourceHandle, MaterialResources& materialResources);
 
     inline bool IsBusy() { return m_CommitJobBusy.load(); }
+    inline bool IsComplete() { return m_CommitJobComplete.load(); }
 
     explicit ResourceRegistry(RenderContext* pRenderContext);
 
@@ -105,6 +106,7 @@ private:
 
     std::jthread      m_CommitJobThread;
     std::atomic<bool> m_CommitJobBusy;
+    std::atomic<bool> m_CommitJobComplete;
 };
 
 #endif

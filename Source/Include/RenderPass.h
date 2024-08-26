@@ -2,6 +2,8 @@
 #define RENDER_PASS_H
 
 class RenderDelegate;
+class Scene;
+class ResourceRegistry;
 
 #include <Common.h>
 
@@ -32,25 +34,51 @@ protected:
 
 private:
 
+    // Generic resources
+    // ---------------------------------------
+
+    struct RenderPassContext
+    {
+        RenderContext*     pRenderContext;
+        FrameParams*       pFrame;
+        HdRenderPassState* pPassState;
+        Scene*             pScene;
+        ResourceRegistry*  pResourceRegistry;
+    };
+
     RenderDelegate* m_Owner;
 
     Image m_ColorAttachment {};
     Image m_DepthAttachment {};
+
+    void LoadShader(ShaderID shaderID, const char* filePath, const char* entryName, VkShaderCreateInfoEXT vkShaderInfo);
+    std::unordered_map<ShaderID, VkShaderEXT> m_ShaderMap;
+
+    VkSampler m_DefaultSampler;
+
+    // Visibility Pass
+    // ---------------------------------------
+
+    VkPipelineLayout m_VisibilityPipelineLayout;
 
     VisibilityPushConstants m_VisibilityPushConstants {};
 
     std::vector<VkVertexInputBindingDescription2EXT>   m_VertexInputBindings;
     std::vector<VkVertexInputAttributeDescription2EXT> m_VertexInputAttributes;
 
-    std::vector<VkDescriptorSetLayout> m_DescriptorSetLayouts;
+    void VisibilityPassCreate(RenderContext* pRenderContext);
+    void VisibilityPassExecute(RenderPassContext* pCtx);
 
-    VkPipelineLayout m_PipelineLayout = VK_NULL_HANDLE;
+    // GBuffer Pass
+    // ---------------------------------------
 
-    std::unordered_map<uint64_t, VkDescriptorSet> m_MaterialDescriptors;
-    std::unordered_map<uint64_t, VkDescriptorSet> m_MeshDataDescriptors;
-    std::unordered_map<ShaderID, VkShaderEXT>     m_ShaderMap;
+    struct GBuffer
+    {
+        Image albedo {};
+        Image normal {};
+    };
 
-    VkSampler m_DefaultSampler;
+    GBuffer m_GBuffer;
 };
 
 #endif
