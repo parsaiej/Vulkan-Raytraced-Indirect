@@ -573,3 +573,17 @@ void DrawUserInterface(RenderContext* pRenderContext, uint32_t swapChainImageInd
                             VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
                             VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT);
 }
+
+void BindGraphicsShaders(VkCommandBuffer cmd, VkShaderEXT vkVertexShader, VkShaderEXT vkFragmentShader)
+{
+
+    std::array<VkShaderStageFlagBits, 5> vkGraphicsShaderStageBits = { VK_SHADER_STAGE_VERTEX_BIT,
+                                                                       VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT,
+                                                                       VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT,
+                                                                       VK_SHADER_STAGE_GEOMETRY_BIT,
+                                                                       VK_SHADER_STAGE_FRAGMENT_BIT };
+
+    std::array<VkShaderEXT, 5> vkGraphicsShaders = { vkVertexShader, VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE, vkFragmentShader };
+
+    vkCmdBindShadersEXT(cmd, static_cast<uint32_t>(vkGraphicsShaderStageBits.size()), vkGraphicsShaderStageBits.data(), vkGraphicsShaders.data());
+}

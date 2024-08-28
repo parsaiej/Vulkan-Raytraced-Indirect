@@ -23,6 +23,12 @@ struct VisibilityPushConstants
     uint32_t   MeshCount;
 };
 
+struct DebugPushConstants
+{
+    uint32_t DebugModeValue;
+    uint32_t MeshCount;
+};
+
 class RenderPass final : public HdRenderPass
 {
 public:
@@ -68,6 +74,9 @@ private:
 
     VkSampler m_DefaultSampler;
 
+    // Resource Descriptors
+    // ---------------------------------------
+
     // Visibility Pass
     // ---------------------------------------
 
@@ -95,6 +104,11 @@ private:
 
     // Debug Pass
     // ---------------------------------------
+
+    VkDescriptorSetLayout m_DebugDescriptorSetLayout;
+    VkPipelineLayout      m_DebugPipelineLayout;
+
+    DebugPushConstants m_DebugPushConstants {};
 
     void DebugPassCreate(RenderContext* pRenderContext);
     void DebugPassExecute(FrameContext* pFrameContext);

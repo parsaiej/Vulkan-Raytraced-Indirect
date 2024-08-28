@@ -170,16 +170,61 @@ void RenderPass::MaterialPassCreate(RenderContext* pRenderContext)
 
 void RenderPass::DebugPassCreate(RenderContext* pRenderContext)
 {
+    // Descriptor Layout
+    // --------------------------------------
+
+    std::vector<VkDescriptorSetLayoutBinding> descriptorLayoutBindings;
+    {
+        descriptorLayoutBindings.push_back(
+            VkDescriptorSetLayoutBinding(0U, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1U, VK_SHADER_STAGE_FRAGMENT_BIT, VK_NULL_HANDLE));
+    }
+
+    VkDescriptorSetLayoutCreateInfo descriptorLayoutInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+    {
+        descriptorLayoutInfo.bindingCount = static_cast<uint32_t>(descriptorLayoutBindings.size());
+        descriptorLayoutInfo.pBindings    = descriptorLayoutBindings.data();
+        descriptorLayoutInfo.flags        = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR;
+    }
+    Check(vkCreateDescriptorSetLayout(pRenderContext->GetDevice(), &descriptorLayoutInfo, nullptr, &m_DebugDescriptorSetLayout),
+          "Failed to create debug descriptor layout.");
+
+    // Pipeline Layout
+    // --------------------------------------
+
+    VkPushConstantRange pushConstantRange;
+    {
+        pushConstantRange.offset     = 0U;
+        pushConstantRange.size       = sizeof(DebugPushConstants);
+        pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+    }
+
+    VkPipelineLayoutCreateInfo pipelineInfo = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
+    {
+        pipelineInfo.pushConstantRangeCount = 1U;
+        pipelineInfo.pPushConstantRanges    = &pushConstantRange;
+        pipelineInfo.setLayoutCount         = 1U;
+        pipelineInfo.pSetLayouts            = &m_DebugDescriptorSetLayout;
+    }
+    Check(vkCreatePipelineLayout(pRenderContext->GetDevice(), &pipelineInfo, nullptr, &m_DebugPipelineLayout),
+          "Failed to create pipeline layout for visibility pipeline.");
+
+    // Shaders
+    // --------------------------------------
+
     VkShaderCreateInfoEXT vertexShaderInfo = { VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT };
     {
-        vertexShaderInfo.stage     = VK_SHADER_STAGE_VERTEX_BIT;
-        vertexShaderInfo.nextStage = VK_SHADER_STAGE_FRAGMENT_BIT;
+        vertexShaderInfo.stage          = VK_SHADER_STAGE_VERTEX_BIT;
+        vertexShaderInfo.nextStage      = VK_SHADER_STAGE_FRAGMENT_BIT;
+        vertexShaderInfo.setLayoutCount = 1U;
+        vertexShaderInfo.pSetLayouts    = &m_DebugDescriptorSetLayout;
     }
     LoadShader(ShaderID::DebugVert, "FullscreenTriangle.vert.spv", "Vert", vertexShaderInfo);
 
     VkShaderCreateInfoEXT debugShaderInfo = { VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT };
     {
-        debugShaderInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+        debugShaderInfo.stage          = VK_SHADER_STAGE_FRAGMENT_BIT;
+        debugShaderInfo.setLayoutCount = 1U;
+        debugShaderInfo.pSetLayouts    = &m_DebugDescriptorSetLayout;
     }
     LoadShader(ShaderID::DebugFrag, "Debug.frag.spv", "Frag", debugShaderInfo);
 }
@@ -247,7 +292,10 @@ RenderPass::~RenderPass()
     vmaDestroyBuffer(pRenderContext->GetAllocator(), m_MaterialOffsetBuffer.buffer, m_MaterialOffsetBuffer.bufferAllocation);
     vmaDestroyBuffer(pRenderContext->GetAllocator(), m_MaterialPixelBuffer.buffer, m_MaterialPixelBuffer.bufferAllocation);
 
+    vkDestroyDescriptorSetLayout(pRenderContext->GetDevice(), m_DebugDescriptorSetLayout, nullptr);
+
     vkDestroyPipelineLayout(pRenderContext->GetDevice(), m_VisibilityPipelineLayout, nullptr);
+    vkDestroyPipelineLayout(pRenderContext->GetDevice(), m_DebugPipelineLayout, nullptr);
 
     for (auto& shader : m_ShaderMap)
         vkDestroyShaderEXT(pRenderContext->GetDevice(), shader.second, nullptr);
@@ -294,24 +342,9 @@ void RenderPass::VisibilityPassExecute(FrameContext* pFrameContext)
     }
     vkCmdBeginRendering(pFrameContext->pFrame->cmd, &vkRenderingInfo);
 
-    std::array<VkShaderStageFlagBits, 5> vkGraphicsShaderStageBits = { VK_SHADER_STAGE_VERTEX_BIT,
-                                                                       VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT,
-                                                                       VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT,
-                                                                       VK_SHADER_STAGE_GEOMETRY_BIT,
-                                                                       VK_SHADER_STAGE_FRAGMENT_BIT };
-
-    std::array<VkShaderEXT, 5> vkGraphicsShaders = { m_ShaderMap[ShaderID::VisibilityVert],
-                                                     VK_NULL_HANDLE,
-                                                     VK_NULL_HANDLE,
-                                                     VK_NULL_HANDLE,
-                                                     m_ShaderMap[ShaderID::VisibilityFrag] };
-
-    vkCmdBindShadersEXT(pFrameContext->pFrame->cmd,
-                        static_cast<uint32_t>(vkGraphicsShaderStageBits.size()),
-                        vkGraphicsShaderStageBits.data(),
-                        vkGraphicsShaders.data());
-
     SetDefaultRenderState(pFrameContext->pFrame->cmd);
+
+    BindGraphicsShaders(pFrameContext->pFrame->cmd, m_ShaderMap[ShaderID::VisibilityVert], m_ShaderMap[ShaderID::VisibilityFrag]);
 
     vkCmdSetVertexInputEXT(pFrameContext->pFrame->cmd,
                            static_cast<uint32_t>(m_VertexInputBindings.size()),
@@ -371,35 +404,8 @@ void RenderPass::DebugPassExecute(FrameContext* pFrameContext)
         colorAttachmentInfo.imageLayout      = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
         colorAttachmentInfo.imageView        = m_ColorAttachment.imageView;
         colorAttachmentInfo.clearValue.color = {
-            { 1U, 0U, 0U, 0U }
+            { 0U, 0U, 0U, 0U }
         };
-    }
-
-    switch (pFrameContext->debugMode)
-    {
-        case 0:
-        case 1:
-        {
-            colorAttachmentInfo.clearValue.color = {
-                { 1, 0, 0, 1 }
-            };
-            break;
-        }
-        case 2:
-        {
-            colorAttachmentInfo.clearValue.color = {
-                { 0, 1, 0, 1 }
-            };
-            break;
-        }
-        case 3:
-        {
-            colorAttachmentInfo.clearValue.color = {
-                { 0, 0, 1, 1 }
-            };
-            break;
-        }
-        case Depth: break;
     }
 
     VkRenderingInfo vkRenderingInfo = { VK_STRUCTURE_TYPE_RENDERING_INFO };
@@ -415,6 +421,42 @@ void RenderPass::DebugPassExecute(FrameContext* pFrameContext)
         };
     }
     vkCmdBeginRendering(pFrameContext->pFrame->cmd, &vkRenderingInfo);
+
+    SetDefaultRenderState(pFrameContext->pFrame->cmd);
+
+    m_DebugPushConstants.DebugModeValue = static_cast<uint32_t>(pFrameContext->debugMode);
+    m_DebugPushConstants.MeshCount      = static_cast<uint32_t>(pFrameContext->pScene->GetMeshList().size());
+
+    vkCmdPushConstants(pFrameContext->pFrame->cmd,
+                       m_DebugPipelineLayout,
+                       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                       0U,
+                       sizeof(DebugPushConstants),
+                       &m_DebugPushConstants);
+
+    VkDescriptorImageInfo vbufferImageInfo {};
+    {
+        vbufferImageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+        vbufferImageInfo.imageView   = m_VisibilityBuffer.imageView;
+    }
+
+    std::array<VkWriteDescriptorSet, 1> writeDescriptorSets {};
+    {
+        // Texture
+        writeDescriptorSets[0].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writeDescriptorSets[0].dstSet          = 0;
+        writeDescriptorSets[0].dstBinding      = 0;
+        writeDescriptorSets[0].descriptorCount = 1;
+        writeDescriptorSets[0].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+        writeDescriptorSets[0].pImageInfo      = &vbufferImageInfo;
+    }
+
+    vkCmdPushDescriptorSetKHR(pFrameContext->pFrame->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_DebugPipelineLayout, 0, 1, writeDescriptorSets.data());
+
+    BindGraphicsShaders(pFrameContext->pFrame->cmd, m_ShaderMap[ShaderID::DebugVert], m_ShaderMap[ShaderID::DebugFrag]);
+
+    // Fullscreen triangle (three procedural vertices).
+    vkCmdDraw(pFrameContext->pFrame->cmd, 3U, 1U, 0U, 0U);
 
     vkCmdEndRendering(pFrameContext->pFrame->cmd);
 }
@@ -461,7 +503,8 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
 
     // 6) Debug
 
-    DebugPassExecute(&frameContext);
+    if (frameContext.debugMode != DebugMode::None)
+        DebugPassExecute(&frameContext);
 
     // Copy the internal color attachment to back buffer.
 
