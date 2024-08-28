@@ -200,6 +200,8 @@ int main()
             }
             ImGui::EndChild();
 
+            ImGui::SetNextItemWidth(10U);
+
             // Display the FPS in the window
             ImGui::Text("FPS: %.1f (%.2f ms)", ImGui::GetIO().Framerate, ImGui::GetIO().DeltaTime * 1000.0F);
 
@@ -209,7 +211,7 @@ int main()
                 vmaCalculateStatistics(pRenderContext->GetAllocator(), &memoryStats);
 
                 ImGui::SameLine();
-                ImGui::Text("VRAM Megabytes: %.2f", static_cast<int>(memoryStats.total.statistics.allocationBytes) / static_cast<float>(1024 * 1024));
+                ImGui::Text("| VRAM: %f MB", static_cast<float>(memoryStats.total.statistics.allocationBytes) / (1024.0F * 1024.0F));
             }
 
             ImGui::End();
