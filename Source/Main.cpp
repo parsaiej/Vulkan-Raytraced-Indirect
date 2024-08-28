@@ -150,8 +150,9 @@ int main()
     // UI
     // ------------------------------------------------
 
-    static char s_USDPath[1024U] = "C:\\Development\\hercules\\cockpit.usd"; // NOLINT
-    // static char s_USDPath[1024U] = "..\\Assets\\scene.usd"; // NOLINT
+    static int  s_DebugSceneIndex  = 0U;
+    const char* kDebugScenePaths[] = { "..\\Assets\\scene.usd", "C:\\Development\\hercules\\cockpit.usd" };
+
     static int s_DebugModeIndex = 0U; // NOLINT
 
     std::jthread stageLoadingThread;
@@ -170,14 +171,15 @@ int main()
 
             ImGui::SameLine();
 
-            ImGui::InputText("##", static_cast<char*>(s_USDPath), IM_ARRAYSIZE(s_USDPath));
+            // ImGui::InputText("##", static_cast<char*>(s_USDPath), IM_ARRAYSIZE(s_USDPath));
+            ImGui::Combo("##", &s_DebugSceneIndex, kDebugScenePaths, IM_ARRAYSIZE(kDebugScenePaths));
 
             ImGui::SameLine();
 
             if (ImGui::Button("Load"))
             {
                 // Offload stage loading to a worker thread.
-                stageLoadingThread = std::jthread([&]() { LoadStage(pRenderIndex, pSceneDelegate, pUsdStage, static_cast<char*>(s_USDPath)); });
+                stageLoadingThread = std::jthread([&]() { LoadStage(pRenderIndex, pSceneDelegate, pUsdStage, kDebugScenePaths[s_DebugSceneIndex]); });
             }
 
             ImGui::EndDisabled();
@@ -200,6 +202,15 @@ int main()
 
             // Display the FPS in the window
             ImGui::Text("FPS: %.1f (%.2f ms)", ImGui::GetIO().Framerate, ImGui::GetIO().DeltaTime * 1000.0F);
+
+            // Report VRAM
+            {
+                VmaTotalStatistics memoryStats;
+                vmaCalculateStatistics(pRenderContext->GetAllocator(), &memoryStats);
+
+                ImGui::SameLine();
+                ImGui::Text("VRAM Megabytes: %.2f", static_cast<int>(memoryStats.total.statistics.allocationBytes) / static_cast<float>(1024 * 1024));
+            }
 
             ImGui::End();
         }

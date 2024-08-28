@@ -30,7 +30,7 @@ ByteAddressBuffer _MeshMetadatas;
 ByteAddressBuffer _IndexBuffers[];
 
 [[vk::binding(3, 0)]]
-ByteAddressBuffer _HomogenousCoordinateBuffers[];
+ByteAddressBuffer _PositionBuffers[];
 
 // NOTE: For now the below buffer lists are of USD Face-varying primvars. Sample accordingly!
 
@@ -66,9 +66,9 @@ void Main(uint3 dispatchThreadID : SV_DispatchThreadID)
     uint3 triangleIndices = _IndexBuffers[NonUniformResourceIndex(meshMetaData.x)].Load3((3u * primIndex) << 2u);
 
     // Load triangle positions.
-    float4 positionH0 = _HomogenousCoordinateBuffers[NonUniformResourceIndex(meshMetaData.y)].Load4(triangleIndices.x << 4u);
-    float4 positionH1 = _HomogenousCoordinateBuffers[NonUniformResourceIndex(meshMetaData.y)].Load4(triangleIndices.y << 4u);
-    float4 positionH2 = _HomogenousCoordinateBuffers[NonUniformResourceIndex(meshMetaData.y)].Load4(triangleIndices.z << 4u);
+    float4 positionH0 = _PositionBuffers[NonUniformResourceIndex(meshMetaData.y)].Load4(triangleIndices.x << 4u);
+    float4 positionH1 = _PositionBuffers[NonUniformResourceIndex(meshMetaData.y)].Load4(triangleIndices.y << 4u);
+    float4 positionH2 = _PositionBuffers[NonUniformResourceIndex(meshMetaData.y)].Load4(triangleIndices.z << 4u);
 
     // Compute the barycentric coordinate + partial derivatives.
     Barycentric::Data barycentric = Barycentric::Compute(positionH0, positionH1, positionH2, float2(0, 0), gConstants._ViewportSize);

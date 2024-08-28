@@ -1,3 +1,6 @@
+#define SHADER_API_VULKAN
+#include "ShaderLibrary/Common.hlsl"
+
 struct Constants
 {
     uint DebugModeValue;
@@ -16,6 +19,18 @@ Texture2D<uint> _VisibilityBuffer;
 
 [[vk::binding(1, 0)]]
 Texture2D<float> _DepthBuffer;
+
+[[vk::binding(0, 1)]]
+ByteAddressBuffer _IndexBuffers[];
+
+[[vk::binding(1, 1)]]
+ByteAddressBuffer _PositionBuffers[];
+
+[[vk::binding(2, 1)]]
+ByteAddressBuffer _TransformBuffers[];
+
+[[vk::binding(3, 1)]]
+ByteAddressBuffer _MeshMetadataBuffers[];
 
 float3 ColorCycle(uint index, uint count)
 {
@@ -48,12 +63,20 @@ float4 DebugPrimitiveID(Interpolators i)
 
 float4 DebugBarycentricCoordinate(Interpolators i)
 {
+    uint visibility = _VisibilityBuffer.Load(uint3(i.positionCS.xy, 0));
+
+    // Decode mesh and triangle data. 
+    const uint meshIndex = visibility >> 16U;
+    const uint primIndex = visibility & 0xFFFF;
+
+
+
     return float4(0, 0, 1, 1);
 }
 
 float4 DebugDepth(Interpolators i)
 {
-    return _DepthBuffer.Load(uint3(i.positionCS.xy, 0));
+    return _DepthBuffer.Load(uint3(i.positionCS.xy, 0)).xxxx;
 }
 
 float4 Frag(Interpolators i) : SV_Target

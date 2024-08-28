@@ -476,6 +476,8 @@ void RenderPass::DebugPassExecute(FrameContext* pFrameContext)
         writeDescriptorSets[1].pImageInfo      = &imageInfo[1];
     }
 
+    // NOTE: Validation layers complain that descriptors aren't bound when we are using VK_EXT_shader_object.
+    //       File a bug report with Khronos.
     vkCmdPushDescriptorSetKHR(pFrameContext->pFrame->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_DebugPipelineLayout, 0, 2, writeDescriptorSets.data());
 
     BindGraphicsShaders(pFrameContext->pFrame->cmd, m_ShaderMap[ShaderID::DebugVert], m_ShaderMap[ShaderID::DebugFrag]);
