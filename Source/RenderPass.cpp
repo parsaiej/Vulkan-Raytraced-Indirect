@@ -63,7 +63,7 @@ void RenderPass::VisibilityPassCreate(RenderContext* pRenderContext)
         vertexShaderInfo.pushConstantRangeCount = 1U;
         vertexShaderInfo.pPushConstantRanges    = &pushConstantRange;
     }
-    LoadShader(ShaderID::MeshVert, "Visibility.vert.spv", "Vert", vertexShaderInfo);
+    LoadShader(ShaderID::VisibilityVert, "Visibility.vert.spv", "Vert", vertexShaderInfo);
 
     VkShaderCreateInfoEXT visShaderInfo = { VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT };
     {
@@ -145,6 +145,9 @@ void RenderPass::VisibilityPassCreate(RenderContext* pRenderContext)
 
 void RenderPass::MaterialPassCreate(RenderContext* pRenderContext)
 {
+    // Allocate buffers
+    // ----------------------------------------
+
     auto CreateDeviceBuffer = [&](Buffer& buffer, uint32_t size, VkBufferUsageFlags usage)
     {
         VkBufferCreateInfo bufferInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
@@ -163,6 +166,22 @@ void RenderPass::MaterialPassCreate(RenderContext* pRenderContext)
     CreateDeviceBuffer(m_MaterialCountBuffer, sizeof(uint32_t) * kMaxMaterial, VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR);
     CreateDeviceBuffer(m_MaterialOffsetBuffer, sizeof(uint32_t) * kMaxMaterial, VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR);
     CreateDeviceBuffer(m_MaterialPixelBuffer, sizeof(GfVec2f) * kWindowWidth * kWindowHeight, VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR);
+}
+
+void RenderPass::DebugPassCreate(RenderContext* pRenderContext)
+{
+    VkShaderCreateInfoEXT vertexShaderInfo = { VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT };
+    {
+        vertexShaderInfo.stage     = VK_SHADER_STAGE_VERTEX_BIT;
+        vertexShaderInfo.nextStage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    }
+    LoadShader(ShaderID::DebugVert, "FullscreenTriangle.vert.spv", "Vert", vertexShaderInfo);
+
+    VkShaderCreateInfoEXT debugShaderInfo = { VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT };
+    {
+        debugShaderInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    }
+    LoadShader(ShaderID::DebugFrag, "Debug.frag.spv", "Frag", debugShaderInfo);
 }
 
 // Render Pass Implementation
@@ -205,6 +224,8 @@ RenderPass::RenderPass(HdRenderIndex* pRenderIndex, const HdRprimCollection& col
     MaterialPassCreate(pRenderContext);
 
     // --------------------------------------
+
+    DebugPassCreate(pRenderContext);
 }
 
 RenderPass::~RenderPass()
@@ -234,7 +255,7 @@ RenderPass::~RenderPass()
     vkDestroySampler(pRenderContext->GetDevice(), m_DefaultSampler, nullptr);
 }
 
-void RenderPass::VisibilityPassExecute(RenderPassContext* pCtx)
+void RenderPass::VisibilityPassExecute(FrameContext* pFrameContext)
 {
     // Configure Attachments
     // --------------------------------------------
@@ -271,7 +292,7 @@ void RenderPass::VisibilityPassExecute(RenderPassContext* pCtx)
             { kWindowWidth, kWindowHeight }
         };
     }
-    vkCmdBeginRendering(pCtx->pFrame->cmd, &vkRenderingInfo);
+    vkCmdBeginRendering(pFrameContext->pFrame->cmd, &vkRenderingInfo);
 
     std::array<VkShaderStageFlagBits, 5> vkGraphicsShaderStageBits = { VK_SHADER_STAGE_VERTEX_BIT,
                                                                        VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT,
@@ -279,31 +300,31 @@ void RenderPass::VisibilityPassExecute(RenderPassContext* pCtx)
                                                                        VK_SHADER_STAGE_GEOMETRY_BIT,
                                                                        VK_SHADER_STAGE_FRAGMENT_BIT };
 
-    std::array<VkShaderEXT, 5> vkGraphicsShaders = { m_ShaderMap[ShaderID::MeshVert],
+    std::array<VkShaderEXT, 5> vkGraphicsShaders = { m_ShaderMap[ShaderID::VisibilityVert],
                                                      VK_NULL_HANDLE,
                                                      VK_NULL_HANDLE,
                                                      VK_NULL_HANDLE,
                                                      m_ShaderMap[ShaderID::VisibilityFrag] };
 
-    vkCmdBindShadersEXT(pCtx->pFrame->cmd,
+    vkCmdBindShadersEXT(pFrameContext->pFrame->cmd,
                         static_cast<uint32_t>(vkGraphicsShaderStageBits.size()),
                         vkGraphicsShaderStageBits.data(),
                         vkGraphicsShaders.data());
 
-    SetDefaultRenderState(pCtx->pFrame->cmd);
+    SetDefaultRenderState(pFrameContext->pFrame->cmd);
 
-    vkCmdSetVertexInputEXT(pCtx->pFrame->cmd,
+    vkCmdSetVertexInputEXT(pFrameContext->pFrame->cmd,
                            static_cast<uint32_t>(m_VertexInputBindings.size()),
                            m_VertexInputBindings.data(),
                            static_cast<uint32_t>(m_VertexInputAttributes.size()),
                            m_VertexInputAttributes.data());
 
     // Update camera matrices.
-    auto matrixVP = GfMatrix4f(pCtx->pPassState->GetWorldToViewMatrix()) * GfMatrix4f(pCtx->pPassState->GetProjectionMatrix());
+    auto matrixVP = GfMatrix4f(pFrameContext->pPassState->GetWorldToViewMatrix()) * GfMatrix4f(pFrameContext->pPassState->GetProjectionMatrix());
 
     PROFILE_START("Record Visibility Buffer Commands");
 
-    const auto& meshList = pCtx->pScene->GetMeshList();
+    const auto& meshList = pFrameContext->pScene->GetMeshList();
 
     m_VisibilityPushConstants.MeshCount = static_cast<uint32_t>(meshList.size());
 
@@ -313,46 +334,104 @@ void RenderPass::VisibilityPassExecute(RenderPassContext* pCtx)
         auto* pMesh = meshList[meshIndex];
 
         ResourceRegistry::MeshResources mesh;
-        if (!pCtx->pResourceRegistry->GetMeshResources(pMesh->GetResourceHandle(), mesh))
+        if (!pFrameContext->pResourceRegistry->GetMeshResources(pMesh->GetResourceHandle(), mesh))
             return;
 
-        vkCmdBindIndexBuffer(pCtx->pFrame->cmd, mesh.indices.buffer, 0U, VK_INDEX_TYPE_UINT32);
+        vkCmdBindIndexBuffer(pFrameContext->pFrame->cmd, mesh.indices.buffer, 0U, VK_INDEX_TYPE_UINT32);
 
         std::array<VkDeviceSize, 1> vertexBufferOffset = { 0U };
         std::array<VkBuffer, 1>     vertexBuffers      = { mesh.positions.buffer };
 
-        vkCmdBindVertexBuffers(pCtx->pFrame->cmd, 0U, 1U, vertexBuffers.data(), vertexBufferOffset.data());
+        vkCmdBindVertexBuffers(pFrameContext->pFrame->cmd, 0U, 1U, vertexBuffers.data(), vertexBufferOffset.data());
 
         m_VisibilityPushConstants.MatrixMVP = pMesh->GetLocalToWorld() * matrixVP;
         m_VisibilityPushConstants.MeshID    = meshIndex;
 
-        vkCmdPushConstants(pCtx->pFrame->cmd,
+        vkCmdPushConstants(pFrameContext->pFrame->cmd,
                            m_VisibilityPipelineLayout,
                            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
                            0U,
                            sizeof(VisibilityPushConstants),
                            &m_VisibilityPushConstants);
 
-        vkCmdDrawIndexed(pCtx->pFrame->cmd, pMesh->GetIndexCount(), 1U, 0U, 0U, 0U);
+        vkCmdDrawIndexed(pFrameContext->pFrame->cmd, pMesh->GetIndexCount(), 1U, 0U, 0U, 0U);
     }
 
     PROFILE_END;
 
-    vkCmdEndRendering(pCtx->pFrame->cmd);
+    vkCmdEndRendering(pFrameContext->pFrame->cmd);
+}
+
+void RenderPass::DebugPassExecute(FrameContext* pFrameContext)
+{
+    VkRenderingAttachmentInfo colorAttachmentInfo = { VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
+    {
+        colorAttachmentInfo.loadOp           = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        colorAttachmentInfo.storeOp          = VK_ATTACHMENT_STORE_OP_STORE;
+        colorAttachmentInfo.imageLayout      = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        colorAttachmentInfo.imageView        = m_ColorAttachment.imageView;
+        colorAttachmentInfo.clearValue.color = {
+            { 1U, 0U, 0U, 0U }
+        };
+    }
+
+    switch (pFrameContext->debugMode)
+    {
+        case 0:
+        case 1:
+        {
+            colorAttachmentInfo.clearValue.color = {
+                { 1, 0, 0, 1 }
+            };
+            break;
+        }
+        case 2:
+        {
+            colorAttachmentInfo.clearValue.color = {
+                { 0, 1, 0, 1 }
+            };
+            break;
+        }
+        case 3:
+        {
+            colorAttachmentInfo.clearValue.color = {
+                { 0, 0, 1, 1 }
+            };
+            break;
+        }
+        case Depth: break;
+    }
+
+    VkRenderingInfo vkRenderingInfo = { VK_STRUCTURE_TYPE_RENDERING_INFO };
+    {
+        vkRenderingInfo.colorAttachmentCount = 1U;
+        vkRenderingInfo.pColorAttachments    = &colorAttachmentInfo;
+        vkRenderingInfo.pDepthAttachment     = VK_NULL_HANDLE;
+        vkRenderingInfo.pStencilAttachment   = VK_NULL_HANDLE;
+        vkRenderingInfo.layerCount           = 1U;
+        vkRenderingInfo.renderArea           = {
+            {            0,             0 },
+            { kWindowWidth, kWindowHeight }
+        };
+    }
+    vkCmdBeginRendering(pFrameContext->pFrame->cmd, &vkRenderingInfo);
+
+    vkCmdEndRendering(pFrameContext->pFrame->cmd);
 }
 
 void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, const TfTokenVector& renderTags)
 {
-    RenderPassContext ctx {};
+    FrameContext frameContext {};
     {
-        ctx.pRenderContext    = m_Owner->GetRenderContext();
-        ctx.pFrame            = m_Owner->GetRenderSetting(kTokenCurrenFrameParams).UncheckedGet<FrameParams*>();
-        ctx.pScene            = m_Owner->GetRenderContext()->GetScene();
-        ctx.pPassState        = renderPassState.get();
-        ctx.pResourceRegistry = std::static_pointer_cast<ResourceRegistry>(m_Owner->GetResourceRegistry()).get();
+        frameContext.pRenderContext    = m_Owner->GetRenderContext();
+        frameContext.pFrame            = m_Owner->GetRenderSetting(kTokenCurrenFrameParams).UncheckedGet<FrameParams*>();
+        frameContext.debugMode         = static_cast<DebugMode>(*m_Owner->GetRenderSetting(kTokenDebugMode).UncheckedGet<int*>());
+        frameContext.pScene            = m_Owner->GetRenderContext()->GetScene();
+        frameContext.pPassState        = renderPassState.get();
+        frameContext.pResourceRegistry = std::static_pointer_cast<ResourceRegistry>(m_Owner->GetResourceRegistry()).get();
     };
 
-    VulkanColorImageBarrier(ctx.pFrame->cmd,
+    VulkanColorImageBarrier(frameContext.pFrame->cmd,
                             m_ColorAttachment.image,
                             VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
@@ -361,18 +440,32 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
                             VK_PIPELINE_STAGE_2_TRANSFER_BIT,
                             VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT);
 
-    // 1) Rasterize V-Buffer
+    // 1) New Frame
 
-    if (ctx.pResourceRegistry->IsComplete())
-        VisibilityPassExecute(&ctx);
+    // 2) Rasterize V-Buffer
+    //    Ref: https://jcgt.org/published/0002/02/04/
+    //    Ref: https://www.gdcvault.com/play/1023792/4K-Rendering-Breakthrough-The-Filtered
+    //    Ref: http://filmicworlds.com/blog/visibility-buffer-rendering-with-material-graphs/
+    //
+    //    TODO(parsa): Use https://github.com/zeux/meshoptimizer to produce optimized meshlets
+    //                 that can be culled in a mesh shader.
 
-    // 2) Resolve G-Buffer from V-Buffer.
+    if (frameContext.pResourceRegistry->IsComplete())
+        VisibilityPassExecute(&frameContext);
 
-    // 3) Lighting Pass
+    // 3) Material Pass
+
+    // 4) Resolve G-Buffer from V-Buffer.
+
+    // 5) Lighting Pass
+
+    // 6) Debug
+
+    DebugPassExecute(&frameContext);
 
     // Copy the internal color attachment to back buffer.
 
-    VulkanColorImageBarrier(ctx.pFrame->cmd,
+    VulkanColorImageBarrier(frameContext.pFrame->cmd,
                             m_ColorAttachment.image,
                             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                             VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
@@ -381,8 +474,8 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
                             VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
                             VK_PIPELINE_STAGE_2_TRANSFER_BIT);
 
-    VulkanColorImageBarrier(ctx.pFrame->cmd,
-                            ctx.pFrame->backBuffer,
+    VulkanColorImageBarrier(frameContext.pFrame->cmd,
+                            frameContext.pFrame->backBuffer,
                             VK_IMAGE_LAYOUT_UNDEFINED,
                             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                             VK_ACCESS_2_MEMORY_READ_BIT,
@@ -397,16 +490,16 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
         backBufferCopy.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0U, 0U, 1U };
     }
 
-    vkCmdCopyImage(ctx.pFrame->cmd,
+    vkCmdCopyImage(frameContext.pFrame->cmd,
                    m_ColorAttachment.image,
                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                   ctx.pFrame->backBuffer,
+                   frameContext.pFrame->backBuffer,
                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                    1U,
                    &backBufferCopy);
 
-    VulkanColorImageBarrier(ctx.pFrame->cmd,
-                            ctx.pFrame->backBuffer,
+    VulkanColorImageBarrier(frameContext.pFrame->cmd,
+                            frameContext.pFrame->backBuffer,
                             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                             VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
                             VK_ACCESS_2_MEMORY_WRITE_BIT,

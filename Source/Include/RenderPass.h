@@ -9,9 +9,10 @@ class ResourceRegistry;
 
 enum ShaderID
 {
-    FullscreenTriangleVert,
+    VisibilityVert,
     VisibilityFrag,
-    MeshVert,
+    DebugVert,
+    DebugFrag,
     GBufferResolveComp
 };
 
@@ -26,6 +27,15 @@ class RenderPass final : public HdRenderPass
 {
 public:
 
+    enum DebugMode
+    {
+        None,
+        MeshID,
+        PrimitiveID,
+        BarycentricCoordinate,
+        Depth
+    };
+
     RenderPass(HdRenderIndex* pRenderIndex, const HdRprimCollection& collection, RenderDelegate* pRenderDelegate);
     ~RenderPass() override;
 
@@ -38,13 +48,14 @@ private:
     // Generic resources
     // ---------------------------------------
 
-    struct RenderPassContext
+    struct FrameContext
     {
         RenderContext*     pRenderContext;
         FrameParams*       pFrame;
         HdRenderPassState* pPassState;
         Scene*             pScene;
         ResourceRegistry*  pResourceRegistry;
+        DebugMode          debugMode;
     };
 
     RenderDelegate* m_Owner;
@@ -70,7 +81,7 @@ private:
     std::vector<VkVertexInputAttributeDescription2EXT> m_VertexInputAttributes;
 
     void VisibilityPassCreate(RenderContext* pRenderContext);
-    void VisibilityPassExecute(RenderPassContext* pCtx);
+    void VisibilityPassExecute(FrameContext* pFrameContext);
 
     // Material Pixel Pass
     // ---------------------------------------
@@ -81,6 +92,12 @@ private:
 
     void MaterialPassCreate(RenderContext* pRenderContext);
     void MaterialPassExecute();
+
+    // Debug Pass
+    // ---------------------------------------
+
+    void DebugPassCreate(RenderContext* pRenderContext);
+    void DebugPassExecute(FrameContext* pFrameContext);
 
     // GBuffer Pass
     // ---------------------------------------

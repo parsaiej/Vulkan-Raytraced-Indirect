@@ -14,6 +14,7 @@ const TfTokenVector kSupportedBPrimTypes = {};                                  
 // This token is used for identifying our custom Hydra driver.
 const TfToken kTokenRenderContextDriver = TfToken("RenderContextDriver");
 const TfToken kTokenCurrenFrameParams   = TfToken("CurrentFrameParams");
+const TfToken kTokenDebugMode           = TfToken("DebugMode");
 
 class RenderDelegate : public HdRenderDelegate
 {

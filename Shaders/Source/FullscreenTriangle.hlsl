@@ -7,7 +7,7 @@ struct Interpolators
     float2 texCoord   : TEXCOORD0;
 };
 
-Interpolators Main(uint vertexID : SV_VertexID)
+Interpolators Vert(uint vertexID : SV_VertexID)
 {
     Interpolators i;
     {

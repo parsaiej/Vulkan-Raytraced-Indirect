@@ -152,6 +152,7 @@ int main()
 
     // static char s_USDPath[1024U] = "C:\\Development\\hercules\\cockpit.usd"; // NOLINT
     static char s_USDPath[1024U] = "..\\Assets\\scene.usd"; // NOLINT
+    static int  s_DebugModeIndex = 0U;                      // NOLINT
 
     std::jthread stageLoadingThread;
 
@@ -181,6 +182,11 @@ int main()
 
             ImGui::EndDisabled();
 
+            ImGui::SameLine();
+
+            const char* kModeNames[] = { "None", "MeshID", "PrimitiveID", "BarycentricCoordinate", "Depth" };
+            ImGui::Combo("Debug", &s_DebugModeIndex, kModeNames, IM_ARRAYSIZE(kModeNames));
+
             ImGui::Separator();
 
             if (ImGui::BeginChild("LogSubWindow", ImVec2(600, 400), 1, ImGuiWindowFlags_HorizontalScrollbar))
@@ -209,6 +215,9 @@ int main()
         // it would require sacrificing the simplicity that HdxTaskController
         // offers.
         pRenderDelegate->SetRenderSetting(kTokenCurrenFrameParams, VtValue(&frameParams));
+
+        // Also forward the debug mode.
+        pRenderDelegate->SetRenderSetting(kTokenDebugMode, VtValue(&s_DebugModeIndex));
 
 #ifdef USE_FREE_CAMERA
         freeCamera.Update(static_cast<float>(frameParams.deltaTime));
