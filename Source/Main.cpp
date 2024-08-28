@@ -150,9 +150,9 @@ int main()
     // UI
     // ------------------------------------------------
 
-    // static char s_USDPath[1024U] = "C:\\Development\\hercules\\cockpit.usd"; // NOLINT
-    static char s_USDPath[1024U] = "..\\Assets\\scene.usd"; // NOLINT
-    static int  s_DebugModeIndex = 0U;                      // NOLINT
+    static char s_USDPath[1024U] = "C:\\Development\\hercules\\cockpit.usd"; // NOLINT
+    // static char s_USDPath[1024U] = "..\\Assets\\scene.usd"; // NOLINT
+    static int s_DebugModeIndex = 0U; // NOLINT
 
     std::jthread stageLoadingThread;
 

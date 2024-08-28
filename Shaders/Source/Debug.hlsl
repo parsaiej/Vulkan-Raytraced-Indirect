@@ -14,6 +14,9 @@ struct Interpolators
 [[vk::binding(0, 0)]]
 Texture2D<uint> _VisibilityBuffer;
 
+[[vk::binding(1, 0)]]
+Texture2D<float> _DepthBuffer;
+
 float3 ColorCycle(uint index, uint count)
 {
 	float t = frac(index / (float)count);
@@ -50,7 +53,7 @@ float4 DebugBarycentricCoordinate(Interpolators i)
 
 float4 DebugDepth(Interpolators i)
 {
-    return float4(0.5, 0.25, 0, 1);
+    return _DepthBuffer.Load(uint3(i.positionCS.xy, 0));
 }
 
 float4 Frag(Interpolators i) : SV_Target

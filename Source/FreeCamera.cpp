@@ -47,7 +47,7 @@ FreeCamera::FreeCamera(HdRenderIndex* renderIndex, const SdfPath& delegateId, GL
         initialState.fov    = XMConvertToRadians(60.0F);
         initialState.aspect = 16.0F / 9.0F;
         initialState.planeN = 0.01F;
-        initialState.planeF = 100.0F;
+        initialState.planeF = 10.0F;
 
         initialState.phi   = XM_PIDIV2;
         initialState.theta = 0.0F;

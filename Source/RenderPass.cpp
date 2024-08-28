@@ -177,6 +177,8 @@ void RenderPass::DebugPassCreate(RenderContext* pRenderContext)
     {
         descriptorLayoutBindings.push_back(
             VkDescriptorSetLayoutBinding(0U, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1U, VK_SHADER_STAGE_FRAGMENT_BIT, VK_NULL_HANDLE));
+        descriptorLayoutBindings.push_back(
+            VkDescriptorSetLayoutBinding(1U, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1U, VK_SHADER_STAGE_FRAGMENT_BIT, VK_NULL_HANDLE));
     }
 
     VkDescriptorSetLayoutCreateInfo descriptorLayoutInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
@@ -440,18 +442,41 @@ void RenderPass::DebugPassExecute(FrameContext* pFrameContext)
         vbufferImageInfo.imageView   = m_VisibilityBuffer.imageView;
     }
 
-    std::array<VkWriteDescriptorSet, 1> writeDescriptorSets {};
+    VkDescriptorImageInfo depthImageInfo {};
     {
-        // Texture
+        depthImageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+        depthImageInfo.imageView   = m_DepthAttachment.imageView;
+    }
+
+    std::array<VkDescriptorImageInfo, 2> imageInfo {};
+    std::array<VkWriteDescriptorSet, 2>  writeDescriptorSets {};
+    {
+        {
+            imageInfo[0].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+            imageInfo[0].imageView   = m_VisibilityBuffer.imageView;
+        }
+
+        {
+            imageInfo[1].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+            imageInfo[1].imageView   = m_DepthAttachment.imageView;
+        }
+
         writeDescriptorSets[0].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         writeDescriptorSets[0].dstSet          = 0;
         writeDescriptorSets[0].dstBinding      = 0;
         writeDescriptorSets[0].descriptorCount = 1;
         writeDescriptorSets[0].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-        writeDescriptorSets[0].pImageInfo      = &vbufferImageInfo;
+        writeDescriptorSets[0].pImageInfo      = &imageInfo[0];
+
+        writeDescriptorSets[1].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writeDescriptorSets[1].dstSet          = 0;
+        writeDescriptorSets[1].dstBinding      = 1;
+        writeDescriptorSets[1].descriptorCount = 1;
+        writeDescriptorSets[1].descriptorType  = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+        writeDescriptorSets[1].pImageInfo      = &imageInfo[1];
     }
 
-    vkCmdPushDescriptorSetKHR(pFrameContext->pFrame->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_DebugPipelineLayout, 0, 1, writeDescriptorSets.data());
+    vkCmdPushDescriptorSetKHR(pFrameContext->pFrame->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_DebugPipelineLayout, 0, 2, writeDescriptorSets.data());
 
     BindGraphicsShaders(pFrameContext->pFrame->cmd, m_ShaderMap[ShaderID::DebugVert], m_ShaderMap[ShaderID::DebugFrag]);
 
