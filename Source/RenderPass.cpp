@@ -141,6 +141,22 @@ void RenderPass::VisibilityPassCreate(RenderContext* pRenderContext)
     }
     Check(vkCreateImageView(pRenderContext->GetDevice(), &imageViewInfo, nullptr, &m_VisibilityBuffer.imageView),
           "Failed to create attachment view.");
+
+    // Initialize barrier for visibility.
+
+    VkCommandBuffer cmd = VK_NULL_HANDLE;
+    SingleShotCommandBegin(pRenderContext, cmd);
+
+    VulkanColorImageBarrier(cmd,
+                            m_VisibilityBuffer.image,
+                            VK_IMAGE_LAYOUT_UNDEFINED,
+                            VK_IMAGE_LAYOUT_GENERAL,
+                            VK_ACCESS_2_NONE,
+                            VK_ACCESS_2_MEMORY_READ_BIT,
+                            VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+                            VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT);
+
+    SingleShotCommandEnd(pRenderContext, cmd);
 }
 
 void RenderPass::MaterialPassCreate(RenderContext* pRenderContext)
@@ -307,6 +323,15 @@ RenderPass::~RenderPass()
 
 void RenderPass::VisibilityPassExecute(FrameContext* pFrameContext)
 {
+    VulkanColorImageBarrier(pFrameContext->pFrame->cmd,
+                            m_VisibilityBuffer.image,
+                            VK_IMAGE_LAYOUT_GENERAL,
+                            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                            VK_ACCESS_2_MEMORY_READ_BIT,
+                            VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+                            VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+                            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT);
+
     // Configure Attachments
     // --------------------------------------------
 
@@ -395,10 +420,28 @@ void RenderPass::VisibilityPassExecute(FrameContext* pFrameContext)
     PROFILE_END;
 
     vkCmdEndRendering(pFrameContext->pFrame->cmd);
+
+    VulkanColorImageBarrier(pFrameContext->pFrame->cmd,
+                            m_VisibilityBuffer.image,
+                            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                            VK_IMAGE_LAYOUT_GENERAL,
+                            VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+                            VK_ACCESS_2_MEMORY_READ_BIT,
+                            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                            VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT);
 }
 
 void RenderPass::DebugPassExecute(FrameContext* pFrameContext)
 {
+    VulkanColorImageBarrier(pFrameContext->pFrame->cmd,
+                            m_VisibilityBuffer.image,
+                            VK_IMAGE_LAYOUT_GENERAL,
+                            VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
+                            VK_ACCESS_2_MEMORY_READ_BIT,
+                            VK_ACCESS_2_MEMORY_READ_BIT,
+                            VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+                            VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT);
+
     VkRenderingAttachmentInfo colorAttachmentInfo = { VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
     {
         colorAttachmentInfo.loadOp           = VK_ATTACHMENT_LOAD_OP_CLEAR;
@@ -436,18 +479,6 @@ void RenderPass::DebugPassExecute(FrameContext* pFrameContext)
                        sizeof(DebugPushConstants),
                        &m_DebugPushConstants);
 
-    VkDescriptorImageInfo vbufferImageInfo {};
-    {
-        vbufferImageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-        vbufferImageInfo.imageView   = m_VisibilityBuffer.imageView;
-    }
-
-    VkDescriptorImageInfo depthImageInfo {};
-    {
-        depthImageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-        depthImageInfo.imageView   = m_DepthAttachment.imageView;
-    }
-
     std::array<VkDescriptorImageInfo, 2> imageInfo {};
     std::array<VkWriteDescriptorSet, 2>  writeDescriptorSets {};
     {
@@ -476,7 +507,9 @@ void RenderPass::DebugPassExecute(FrameContext* pFrameContext)
         writeDescriptorSets[1].pImageInfo      = &imageInfo[1];
     }
 
-    // NOTE: Validation layers complain that descriptors aren't bound when we are using VK_EXT_shader_object.
+    // NOTE: Validation layers complain that descriptors aren't bound or bound incorrectly when we are using VK_EXT_shader_object:
+    //       1) VUID-vkCmdDraw-format-07753
+    //       2) VUID-vkCmdDraw-None-08600
     //       File a bug report with Khronos.
     vkCmdPushDescriptorSetKHR(pFrameContext->pFrame->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_DebugPipelineLayout, 0, 2, writeDescriptorSets.data());
 
@@ -486,6 +519,15 @@ void RenderPass::DebugPassExecute(FrameContext* pFrameContext)
     vkCmdDraw(pFrameContext->pFrame->cmd, 3U, 1U, 0U, 0U);
 
     vkCmdEndRendering(pFrameContext->pFrame->cmd);
+
+    VulkanColorImageBarrier(pFrameContext->pFrame->cmd,
+                            m_VisibilityBuffer.image,
+                            VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
+                            VK_IMAGE_LAYOUT_GENERAL,
+                            VK_ACCESS_2_MEMORY_READ_BIT,
+                            VK_ACCESS_2_MEMORY_READ_BIT,
+                            VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                            VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT);
 }
 
 void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, const TfTokenVector& renderTags)
