@@ -106,7 +106,7 @@ void RenderPass::VisibilityPassCreate(RenderContext* pRenderContext)
         visibilityBufferInfo.arrayLayers   = 1U;
         visibilityBufferInfo.format        = VK_FORMAT_R32_UINT;
         visibilityBufferInfo.samples       = VK_SAMPLE_COUNT_1_BIT;
-        visibilityBufferInfo.usage         = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
+        visibilityBufferInfo.usage         = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
         visibilityBufferInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         visibilityBufferInfo.extent        = { kWindowWidth, kWindowHeight, 1 };
         visibilityBufferInfo.mipLevels     = 1U;
@@ -192,7 +192,7 @@ void RenderPass::DebugPassCreate(RenderContext* pRenderContext)
     std::vector<VkDescriptorSetLayoutBinding> descriptorLayoutBindings;
     {
         descriptorLayoutBindings.push_back(
-            VkDescriptorSetLayoutBinding(0U, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1U, VK_SHADER_STAGE_FRAGMENT_BIT, VK_NULL_HANDLE));
+            VkDescriptorSetLayoutBinding(0U, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1U, VK_SHADER_STAGE_FRAGMENT_BIT, VK_NULL_HANDLE));
         descriptorLayoutBindings.push_back(
             VkDescriptorSetLayoutBinding(1U, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1U, VK_SHADER_STAGE_FRAGMENT_BIT, VK_NULL_HANDLE));
     }
@@ -483,7 +483,7 @@ void RenderPass::DebugPassExecute(FrameContext* pFrameContext)
     std::array<VkWriteDescriptorSet, 2>  writeDescriptorSets {};
     {
         {
-            imageInfo[0].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+            imageInfo[0].imageLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
             imageInfo[0].imageView   = m_VisibilityBuffer.imageView;
         }
 
@@ -496,7 +496,7 @@ void RenderPass::DebugPassExecute(FrameContext* pFrameContext)
         writeDescriptorSets[0].dstSet          = 0;
         writeDescriptorSets[0].dstBinding      = 0;
         writeDescriptorSets[0].descriptorCount = 1;
-        writeDescriptorSets[0].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+        writeDescriptorSets[0].descriptorType  = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
         writeDescriptorSets[0].pImageInfo      = &imageInfo[0];
 
         writeDescriptorSets[1].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -510,7 +510,7 @@ void RenderPass::DebugPassExecute(FrameContext* pFrameContext)
     // NOTE: Validation layers complain that descriptors aren't bound or bound incorrectly when we are using VK_EXT_shader_object:
     //       1) VUID-vkCmdDraw-format-07753
     //       2) VUID-vkCmdDraw-None-08600
-    //       File a bug report with Khronos.
+    //       File a bug report with Khronos or follow up in this thread: https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/7677
     vkCmdPushDescriptorSetKHR(pFrameContext->pFrame->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_DebugPipelineLayout, 0, 2, writeDescriptorSets.data());
 
     BindGraphicsShaders(pFrameContext->pFrame->cmd, m_ShaderMap[ShaderID::DebugVert], m_ShaderMap[ShaderID::DebugFrag]);
