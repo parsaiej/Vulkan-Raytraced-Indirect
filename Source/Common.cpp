@@ -204,6 +204,7 @@ bool CreateVulkanLogicalDevice(const VkPhysicalDevice&         vkPhysicalDevice,
     vkGraphicsQueueCreateInfo.queueCount              = 1U;
     vkGraphicsQueueCreateInfo.pQueuePriorities        = &graphicsQueuePriority;
 
+    VkPhysicalDeviceDescriptorIndexingFeaturesEXT        descriptorIndexing = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES_EXT };
     VkPhysicalDeviceFragmentShaderBarycentricFeaturesKHR baryFeature = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADER_BARYCENTRIC_FEATURES_KHR };
     VkPhysicalDeviceRayQueryFeaturesKHR                  rayQueryFeature = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR };
     VkPhysicalDeviceRayTracingPipelineFeaturesKHR        rtFeature       = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR };
@@ -214,6 +215,7 @@ bool CreateVulkanLogicalDevice(const VkPhysicalDevice&         vkPhysicalDevice,
     VkPhysicalDeviceVulkan11Features                     vulkan11Features    = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES };
     VkPhysicalDeviceFeatures2                            vulkan10Features    = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
 
+    baryFeature.pNext         = &descriptorIndexing;
     rayQueryFeature.pNext     = &baryFeature;
     rtFeature.pNext           = &rayQueryFeature;
     acFeature.pNext           = &rtFeature;
