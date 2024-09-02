@@ -206,6 +206,18 @@ void RenderPass::DebugPassCreate(RenderContext* pRenderContext)
     Check(vkCreateDescriptorSetLayout(pRenderContext->GetDevice(), &descriptorLayoutInfo, nullptr, &m_DebugDescriptorSetLayout),
           "Failed to create debug descriptor layout.");
 
+    // Specify the descriptor set layouts for the pipeline.
+    // --------------------------------------
+
+    // Obtain the resource registry
+    auto pResourceRegistry = std::static_pointer_cast<ResourceRegistry>(m_Owner->GetResourceRegistry());
+
+    std::vector<VkDescriptorSetLayout> debugPipelineSetLayouts;
+    {
+        debugPipelineSetLayouts.push_back(m_DebugDescriptorSetLayout);
+        debugPipelineSetLayouts.push_back(pResourceRegistry->GetResourceDescriptorLayout());
+    }
+
     // Pipeline Layout
     // --------------------------------------
 
@@ -220,8 +232,8 @@ void RenderPass::DebugPassCreate(RenderContext* pRenderContext)
     {
         pipelineInfo.pushConstantRangeCount = 1U;
         pipelineInfo.pPushConstantRanges    = &pushConstantRange;
-        pipelineInfo.setLayoutCount         = 1U;
-        pipelineInfo.pSetLayouts            = &m_DebugDescriptorSetLayout;
+        pipelineInfo.setLayoutCount         = static_cast<uint32_t>(debugPipelineSetLayouts.size());
+        pipelineInfo.pSetLayouts            = debugPipelineSetLayouts.data();
     }
     Check(vkCreatePipelineLayout(pRenderContext->GetDevice(), &pipelineInfo, nullptr, &m_DebugPipelineLayout),
           "Failed to create pipeline layout for visibility pipeline.");
@@ -233,16 +245,16 @@ void RenderPass::DebugPassCreate(RenderContext* pRenderContext)
     {
         vertexShaderInfo.stage          = VK_SHADER_STAGE_VERTEX_BIT;
         vertexShaderInfo.nextStage      = VK_SHADER_STAGE_FRAGMENT_BIT;
-        vertexShaderInfo.setLayoutCount = 1U;
-        vertexShaderInfo.pSetLayouts    = &m_DebugDescriptorSetLayout;
+        vertexShaderInfo.setLayoutCount = static_cast<uint32_t>(debugPipelineSetLayouts.size());
+        vertexShaderInfo.pSetLayouts    = debugPipelineSetLayouts.data();
     }
     LoadShader(ShaderID::DebugVert, "FullscreenTriangle.vert.spv", "Vert", vertexShaderInfo);
 
     VkShaderCreateInfoEXT debugShaderInfo = { VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT };
     {
         debugShaderInfo.stage          = VK_SHADER_STAGE_FRAGMENT_BIT;
-        debugShaderInfo.setLayoutCount = 1U;
-        debugShaderInfo.pSetLayouts    = &m_DebugDescriptorSetLayout;
+        debugShaderInfo.setLayoutCount = static_cast<uint32_t>(debugPipelineSetLayouts.size());
+        debugShaderInfo.pSetLayouts    = debugPipelineSetLayouts.data();
     }
     LoadShader(ShaderID::DebugFrag, "Debug.frag.spv", "Frag", debugShaderInfo);
 }
@@ -512,6 +524,19 @@ void RenderPass::DebugPassExecute(FrameContext* pFrameContext)
     //       2) VUID-vkCmdDraw-None-08600
     //       File a bug report with Khronos or follow up in this thread: https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/7677
     vkCmdPushDescriptorSetKHR(pFrameContext->pFrame->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_DebugPipelineLayout, 0, 2, writeDescriptorSets.data());
+
+    // For the second descriptor set, we use traditional descriptors that are pre-created during the alst resource registry update.
+    // We bind this set to the second slot.
+    {
+        vkCmdBindDescriptorSets(pFrameContext->pFrame->cmd,
+                                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                m_DebugPipelineLayout,
+                                1U,
+                                1U,
+                                &pFrameContext->pResourceRegistry->GetResourceDescriptorSet(),
+                                0U,
+                                nullptr);
+    }
 
     BindGraphicsShaders(pFrameContext->pFrame->cmd, m_ShaderMap[ShaderID::DebugVert], m_ShaderMap[ShaderID::DebugFrag]);
 

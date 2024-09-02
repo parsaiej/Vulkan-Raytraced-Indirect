@@ -61,6 +61,9 @@ public:
     inline bool IsBusy() { return m_CommitJobBusy.load(); }
     inline bool IsComplete() { return m_CommitJobComplete.load(); }
 
+    inline const VkDescriptorSetLayout& GetResourceDescriptorLayout() { return m_ResourceRegistryDescriptorSetLayout; }
+    inline const VkDescriptorSet&       GetResourceDescriptorSet() { return m_ResourceRegistryDescriptorSet; }
+
     explicit ResourceRegistry(RenderContext* pRenderContext);
 
 protected:
@@ -89,8 +92,9 @@ private:
     std::map<uint64_t, MeshResources>     m_MeshResourceMap;
     std::map<uint64_t, MaterialResources> m_MaterialResourceMap;
 
-    // Descriptor Sets
-    std::vector<VkDescriptorSet> m_DescriptorSets;
+    // Using VK_EXT_descriptor_indexing to bind all resource arrays to PSO.
+    VkDescriptorSetLayout m_ResourceRegistryDescriptorSetLayout;
+    VkDescriptorSet       m_ResourceRegistryDescriptorSet;
 
     void ProcessMeshRequest(RenderContext*                       pRenderContext,
                             const ResourceRegistry::MeshRequest& meshRequest,
@@ -107,6 +111,8 @@ private:
     std::jthread      m_CommitJobThread;
     std::atomic<bool> m_CommitJobBusy;
     std::atomic<bool> m_CommitJobComplete;
+
+    // Descriptor Set
 };
 
 #endif

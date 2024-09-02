@@ -41,12 +41,13 @@ void CreateSampledImageResource(RenderContext* pRenderContext, Image* pImage, ui
 
 ResourceRegistry::ResourceRegistry(RenderContext* pRenderContext) : m_RenderContext(pRenderContext)
 {
-    // Create default image.
+    // Create Default Resources
+    // --------------------------------------------
+
     auto* pDefaultImage = &m_ImageResources.at(m_ImageCounter++);
     CreateSampledImageResource(pRenderContext, pDefaultImage, 4U, 4U, VK_FORMAT_R8G8B8A8_SRGB);
     DebugLabelImageResource(pRenderContext, *pDefaultImage, "Default Material Image");
 
-    // Create default buffer.
     auto* pDefaultBuffer = &m_BufferResources.at(m_BufferCounter++);
 
     {
@@ -70,7 +71,8 @@ ResourceRegistry::ResourceRegistry(RenderContext* pRenderContext) : m_RenderCont
 
     DebugLabelBufferResource(pRenderContext, *pDefaultBuffer, "Default Mesh Buffer");
 
-    // Create a command pool for the resource registry (in case of async loading).
+    // Create dedicated command pool for resource loading thread.
+    // --------------------------------------------
 
     VkCommandPoolCreateInfo vkCommandPoolInfo = { VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO };
     {
@@ -81,6 +83,32 @@ ResourceRegistry::ResourceRegistry(RenderContext* pRenderContext) : m_RenderCont
           "Failed to create a Resource Creation Command Pool");
 
     m_CommitJobComplete.store(false);
+
+    // Create a descriptor set layout defining resource arrays based on the max resource count.
+    // --------------------------------------------
+
+    const VkDescriptorBindingFlagsEXT flags = VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT_EXT | VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT_EXT;
+
+    VkDescriptorSetLayoutBindingFlagsCreateInfoEXT descriptorSetFlags { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO_EXT };
+    {
+        descriptorSetFlags.bindingCount  = 1U;
+        descriptorSetFlags.pBindingFlags = &flags;
+    }
+
+    std::vector<VkDescriptorSetLayoutBinding> bindings;
+    {
+        // Binding 0:
+        bindings.push_back(VkDescriptorSetLayoutBinding(0U, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 256U, VK_SHADER_STAGE_FRAGMENT_BIT, VK_NULL_HANDLE));
+    }
+
+    VkDescriptorSetLayoutCreateInfo descriptorSetLayoutInfo { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+    {
+        descriptorSetLayoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
+        descriptorSetLayoutInfo.pBindings    = bindings.data();
+        descriptorSetLayoutInfo.pNext        = &descriptorSetFlags;
+    }
+    Check(vkCreateDescriptorSetLayout(pRenderContext->GetDevice(), &descriptorSetLayoutInfo, nullptr, &m_ResourceRegistryDescriptorSetLayout),
+          "Failed to create descriptor set layout for resource registry.");
 }
 
 // Local utility for emplacing an alpha value every 12 bytes.
@@ -308,8 +336,8 @@ void ResourceRegistry::ProcessMeshRequest(RenderContext*                       p
         return *pMeshBuffer;
     };
 
-    pMesh->indices   = CreateMeshBuffer(meshRequest.pTriangles, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
-    pMesh->positions = CreateMeshBuffer(meshRequest.pPoints, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+    pMesh->indices   = CreateMeshBuffer(meshRequest.pTriangles, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+    pMesh->positions = CreateMeshBuffer(meshRequest.pPoints, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
 
     // Label the resources.
     DebugLabelBufferResource(pRenderContext, pMesh->indices, std::format("{} - Index", meshRequest.id.GetText()).c_str());
@@ -380,6 +408,46 @@ void ResourceRegistry::CommitJob()
     // Release staging memory.
     vmaDestroyBuffer(m_RenderContext->GetAllocator(), stagingBuffer.buffer, stagingBuffer.bufferAllocation);
 
+    // Create indexed descriptor set.
+    {
+        VkDescriptorSetVariableDescriptorCountAllocateInfoEXT descriptorCountInfo;
+        {
+            descriptorCountInfo.sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO_EXT;
+            descriptorCountInfo.descriptorSetCount = 1U;
+            descriptorCountInfo.pDescriptorCounts  = &m_BufferCounter;
+        }
+
+        VkDescriptorSetAllocateInfo descriptorsAllocInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
+        {
+            descriptorsAllocInfo.descriptorSetCount = 1U;
+            descriptorsAllocInfo.descriptorPool     = m_RenderContext->GetDescriptorPool();
+            descriptorsAllocInfo.pSetLayouts        = &m_ResourceRegistryDescriptorSetLayout;
+            descriptorsAllocInfo.pNext              = &descriptorCountInfo;
+        }
+
+        Check(vkAllocateDescriptorSets(m_RenderContext->GetDevice(), &descriptorsAllocInfo, &m_ResourceRegistryDescriptorSet),
+              "Failed to allocate indexed resource descriptor sets.");
+
+        for (uint32_t bufferIndex = 0U; bufferIndex < m_BufferCounter; bufferIndex++)
+        {
+            VkDescriptorBufferInfo bufferInfo;
+            {
+                bufferInfo.buffer = m_BufferResources.at(bufferIndex).buffer;
+                bufferInfo.range  = VK_WHOLE_SIZE;
+            }
+
+            VkWriteDescriptorSet descriptorWrite { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+            {
+                descriptorWrite.descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+                descriptorWrite.descriptorCount = 1U;
+                descriptorWrite.dstSet          = m_ResourceRegistryDescriptorSet;
+                descriptorWrite.dstArrayElement = bufferIndex;
+                descriptorWrite.pBufferInfo     = &bufferInfo;
+            }
+            vkUpdateDescriptorSets(m_RenderContext->GetDevice(), 1U, &descriptorWrite, 0U, nullptr);
+        }
+    }
+
     m_CommitJobBusy.store(false);
     m_CommitJobComplete.store(true);
 }
@@ -416,6 +484,8 @@ void ResourceRegistry::_GarbageCollect()
 
         vmaDestroyImage(m_RenderContext->GetAllocator(), m_ImageResources.at(imageIndex).image, m_ImageResources.at(imageIndex).imageAllocation);
     }
+
+    vkDestroyDescriptorSetLayout(m_RenderContext->GetDevice(), m_ResourceRegistryDescriptorSetLayout, nullptr);
 
     vkDestroyCommandPool(m_RenderContext->GetDevice(), m_ResourceCreationCommandPool, nullptr);
 }

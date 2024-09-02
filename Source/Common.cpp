@@ -215,7 +215,9 @@ bool CreateVulkanLogicalDevice(const VkPhysicalDevice&         vkPhysicalDevice,
     VkPhysicalDeviceVulkan11Features                     vulkan11Features    = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES };
     VkPhysicalDeviceFeatures2                            vulkan10Features    = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
 
-    baryFeature.pNext         = &descriptorIndexing;
+    // NOTE: Due to VUID-VkDeviceCreateInfo-pNext-02830 this may not be needed since it ships with Vulkan 1.2?
+    // baryFeature.pNext         = &descriptorIndexing;
+
     rayQueryFeature.pNext     = &baryFeature;
     rtFeature.pNext           = &rayQueryFeature;
     acFeature.pNext           = &rtFeature;
