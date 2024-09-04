@@ -3,7 +3,6 @@
 #include <RenderContext.h>
 #include <RenderDelegate.h>
 #include <ResourceRegistry.h>
-#include <Scene.h>
 
 HdDirtyBits Mesh::GetInitialDirtyBitsMask() const { return HdChangeTracker::AllSceneDirtyBits; }
 
@@ -80,17 +79,15 @@ void Mesh::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParams, H
     }
     */
 
+    // Store material binding (if any)
+    meshRequest.materialId = pSceneDelegate->GetMaterialId(id);
+
     // Push request.
     m_ResourceHandle =
         std::static_pointer_cast<ResourceRegistry>(pSceneDelegate->GetRenderIndex().GetResourceRegistry())->PushMeshRequest(meshRequest);
 
     // Get the world matrix.
     m_LocalToWorld = GfMatrix4f(pSceneDelegate->GetTransform(id));
-
-    // Store material binding (if any)
-    m_MaterialHash = pSceneDelegate->GetMaterialId(id).GetHash();
-
-    m_Owner->GetRenderContext()->GetScene()->AddMesh(this);
 
     // Clear the dirty bits.
     *pDirtyBits &= ~HdChangeTracker::AllSceneDirtyBits;

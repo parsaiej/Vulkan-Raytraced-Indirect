@@ -6,8 +6,6 @@ class RenderContext;
 
 #include <Common.h>
 
-#include <queue>
-
 class ResourceRegistry : public HdResourceRegistry
 {
 public:
@@ -15,6 +13,7 @@ public:
     struct MeshRequest
     {
         SdfPath      id;
+        SdfPath      materialId;
         VtVec3fArray pPoints;
         VtVec3iArray pTriangles;
     };
@@ -30,8 +29,9 @@ public:
 
     struct MeshResources
     {
-        Buffer indices;
-        Buffer positions;
+        Buffer   indices;
+        Buffer   positions;
+        uint32_t materialResourceIndex {};
     };
 
     struct MaterialResources
@@ -54,9 +54,6 @@ public:
         m_PendingMaterialRequests.emplace(materialRequest);
         return materialRequest.id.GetHash();
     }
-
-    bool GetMeshResources(uint64_t resourceHandle, MeshResources& meshResources);
-    bool GetMaterialResources(uint64_t resourceHandle, MaterialResources& materialResources);
 
     inline bool IsBusy() { return m_CommitJobBusy.load(); }
     inline bool IsComplete() { return m_CommitJobComplete.load(); }
@@ -81,16 +78,17 @@ private:
     const static uint32_t kMaxBufferResources = 16U * 8192U;
     const static uint32_t kMaxImageResources  = 512U;
 
-    std::array<Buffer, kMaxBufferResources> m_BufferResources;
-    std::array<Image, kMaxImageResources>   m_ImageResources;
-
     RenderContext* m_RenderContext;
 
     std::queue<MeshRequest>     m_PendingMeshRequests;
     std::queue<MaterialRequest> m_PendingMaterialRequests;
 
-    std::map<uint64_t, MeshResources>     m_MeshResourceMap;
-    std::map<uint64_t, MaterialResources> m_MaterialResourceMap;
+    std::vector<MeshResources>     m_MeshResources;
+    std::vector<MaterialResources> m_MaterialResources;
+
+    // The backing resources for Mesh/Materials.
+    std::array<Buffer, kMaxBufferResources> m_BufferResources;
+    std::array<Image, kMaxImageResources>   m_ImageResources;
 
     // Using VK_EXT_descriptor_indexing to bind all resource arrays to PSO.
     VkDescriptorSetLayout m_ResourceRegistryDescriptorSetLayout;

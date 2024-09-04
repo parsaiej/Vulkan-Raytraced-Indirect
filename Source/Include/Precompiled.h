@@ -28,6 +28,7 @@
 #include <fstream>
 #include <intrin.h>
 #include <filesystem>
+#include <queue>
 
 // Superluminal Includes (If enabled)
 // ---------------------------------------------------------

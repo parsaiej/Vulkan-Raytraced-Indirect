@@ -1,6 +1,5 @@
 #include <Common.h>
 #include <RenderContext.h>
-#include <Scene.h>
 
 RenderContext::RenderContext(uint32_t width, uint32_t height)
 {
@@ -222,8 +221,6 @@ RenderContext::RenderContext(uint32_t width, uint32_t height)
     }
     Check(vkCreateDescriptorPool(m_VKDeviceLogical, &vkDescriptorPoolInfo, VK_NULL_HANDLE, &m_VKDescriptorPool),
           "Failed to create Vulkan Descriptor Pool.");
-
-    m_Scene = std::make_unique<Scene>();
 
     // Configure Imgui
     // ------------------------------------------------

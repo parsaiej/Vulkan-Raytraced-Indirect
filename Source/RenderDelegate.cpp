@@ -5,7 +5,6 @@
 #include <RenderDelegate.h>
 #include <RenderPass.h>
 #include <ResourceRegistry.h>
-#include <Scene.h>
 
 // Render Delegate Implementation
 // ------------------------------------------------------------

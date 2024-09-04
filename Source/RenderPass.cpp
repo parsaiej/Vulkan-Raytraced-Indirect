@@ -3,7 +3,6 @@
 #include <RenderDelegate.h>
 #include <RenderPass.h>
 #include <ResourceRegistry.h>
-#include <Scene.h>
 #include <Material.h>
 
 // Shader Creation Utility
@@ -396,8 +395,6 @@ void RenderPass::VisibilityPassExecute(FrameContext* pFrameContext)
 
     PROFILE_START("Record Visibility Buffer Commands");
 
-    const auto& meshList = pFrameContext->pScene->GetMeshList();
-
     m_VisibilityPushConstants.MeshCount = static_cast<uint32_t>(meshList.size());
 
     // TODO(parsa): Go wide on all cores to record these commands on a secondary command list.
@@ -562,7 +559,6 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
         frameContext.pRenderContext    = m_Owner->GetRenderContext();
         frameContext.pFrame            = m_Owner->GetRenderSetting(kTokenCurrenFrameParams).UncheckedGet<FrameParams*>();
         frameContext.debugMode         = static_cast<DebugMode>(*m_Owner->GetRenderSetting(kTokenDebugMode).UncheckedGet<int*>());
-        frameContext.pScene            = m_Owner->GetRenderContext()->GetScene();
         frameContext.pPassState        = renderPassState.get();
         frameContext.pResourceRegistry = std::static_pointer_cast<ResourceRegistry>(m_Owner->GetResourceRegistry()).get();
     };

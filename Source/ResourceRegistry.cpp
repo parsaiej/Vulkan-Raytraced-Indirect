@@ -375,12 +375,14 @@ void ResourceRegistry::CommitJob()
 
     PROFILE_START("Process Mesh Requests");
 
+    std::map<uint64_t, MeshResources> meshMap;
+
     while (!m_PendingMeshRequests.empty())
     {
         auto meshRequest = m_PendingMeshRequests.front();
 
         // Convert the mesh request into mesh resources.
-        ProcessMeshRequest(m_RenderContext, meshRequest, stagingBuffer, &m_MeshResourceMap[meshRequest.id.GetHash()]);
+        ProcessMeshRequest(m_RenderContext, meshRequest, stagingBuffer, &meshMap[meshRequest.id.GetHash()]);
 
         // Request process, remove.
         m_PendingMeshRequests.pop();
@@ -393,22 +395,36 @@ void ResourceRegistry::CommitJob()
 
     PROFILE_START("Process Material Requests");
 
+    std::map<uint64_t, MaterialResources> materialMap;
+
     while (!m_PendingMaterialRequests.empty())
     {
         auto materialRequest = m_PendingMaterialRequests.front();
 
         // Convert the material request into material resources
-        ProcessMaterialRequest(m_RenderContext, materialRequest, stagingBuffer, &m_MaterialResourceMap[materialRequest.id.GetHash()]);
+        ProcessMaterialRequest(m_RenderContext, materialRequest, stagingBuffer, &materialMap[materialRequest.id.GetHash()]);
 
         m_PendingMaterialRequests.pop();
     }
 
     PROFILE_END;
 
+    // Flatten the resource lists into contiguous memory.
+    // -----------------------------------------------------------
+
+    for (const auto& mesh : meshMap)
+    {
+        m_MeshResources.push_back(mesh.second);
+    }
+
     // Release staging memory.
+    // -----------------------------------------------------------
+
     vmaDestroyBuffer(m_RenderContext->GetAllocator(), stagingBuffer.buffer, stagingBuffer.bufferAllocation);
 
     // Create indexed descriptor set.
+    // -----------------------------------------------------------
+
     {
         VkDescriptorSetVariableDescriptorCountAllocateInfoEXT descriptorCountInfo;
         {
@@ -488,25 +504,4 @@ void ResourceRegistry::_GarbageCollect()
     vkDestroyDescriptorSetLayout(m_RenderContext->GetDevice(), m_ResourceRegistryDescriptorSetLayout, nullptr);
 
     vkDestroyCommandPool(m_RenderContext->GetDevice(), m_ResourceCreationCommandPool, nullptr);
-}
-
-bool ResourceRegistry::GetMeshResources(uint64_t resourceHandle, MeshResources& meshResources)
-{
-    if (!m_MeshResourceMap.contains(resourceHandle))
-        return false;
-
-    meshResources = m_MeshResourceMap[resourceHandle];
-
-    // Check the validity of index buffer.
-    return meshResources.indices.buffer != m_BufferResources[0].buffer;
-}
-
-bool ResourceRegistry::GetMaterialResources(uint64_t resourceHandle, MaterialResources& materialResources)
-{
-    if (!m_MaterialResourceMap.contains(resourceHandle))
-        return false;
-
-    materialResources = m_MaterialResourceMap[resourceHandle];
-
-    return true;
 }

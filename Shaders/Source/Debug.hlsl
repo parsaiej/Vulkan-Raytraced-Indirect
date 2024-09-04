@@ -23,6 +23,9 @@ Texture2D<float> _DepthBuffer;
 [[vk::binding(0, 1)]]
 ByteAddressBuffer _MeshBuffers[];
 
+[[vk::binding(1, 1)]]
+ByteAddressBuffer _MeshMetadataBuffer;
+
 float3 ColorCycle(uint index, uint count)
 {
 	float t = frac(index / (float)count);

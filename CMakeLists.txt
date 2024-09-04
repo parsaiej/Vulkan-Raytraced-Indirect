@@ -92,7 +92,6 @@ add_executable(${PROJECT_NAME}
     Source/Mesh.cpp
     Source/Common.cpp
     Source/Material.cpp
-    Source/Scene.cpp
     Source/FreeCamera.cpp
     ${IMGUI_SRC}
 )

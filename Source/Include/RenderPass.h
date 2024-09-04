@@ -2,7 +2,6 @@
 #define RENDER_PASS_H
 
 class RenderDelegate;
-class Scene;
 class ResourceRegistry;
 
 #include <Common.h>
@@ -59,7 +58,6 @@ private:
         RenderContext*     pRenderContext;
         FrameParams*       pFrame;
         HdRenderPassState* pPassState;
-        Scene*             pScene;
         ResourceRegistry*  pResourceRegistry;
         DebugMode          debugMode;
     };
