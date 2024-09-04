@@ -476,7 +476,7 @@ void ResourceRegistry::_Commit()
     if (IsBusy())
         return;
 
-    m_CommitJobThread = std::jthread(&ResourceRegistry::CommitJob, this);
+    // m_CommitJobThread = std::jthread(&ResourceRegistry::CommitJob, this);
 }
 
 void ResourceRegistry::_GarbageCollect()

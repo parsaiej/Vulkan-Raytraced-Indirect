@@ -80,6 +80,11 @@
 using namespace DirectX;
 using namespace DirectX::SimpleMath;
 
+// meshoptimizer
+// ---------------------------------------------------------
+
+#include <meshoptimizer.h>
+
 // OpenUSD Includes
 // ---------------------------------------------------------
 

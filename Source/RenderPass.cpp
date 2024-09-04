@@ -395,37 +395,6 @@ void RenderPass::VisibilityPassExecute(FrameContext* pFrameContext)
 
     PROFILE_START("Record Visibility Buffer Commands");
 
-    m_VisibilityPushConstants.MeshCount = static_cast<uint32_t>(meshList.size());
-
-    // TODO(parsa): Go wide on all cores to record these commands on a secondary command list.
-    for (uint32_t meshIndex = 0U; meshIndex < meshList.size(); meshIndex++)
-    {
-        auto* pMesh = meshList[meshIndex];
-
-        ResourceRegistry::MeshResources mesh;
-        if (!pFrameContext->pResourceRegistry->GetMeshResources(pMesh->GetResourceHandle(), mesh))
-            return;
-
-        vkCmdBindIndexBuffer(pFrameContext->pFrame->cmd, mesh.indices.buffer, 0U, VK_INDEX_TYPE_UINT32);
-
-        std::array<VkDeviceSize, 1> vertexBufferOffset = { 0U };
-        std::array<VkBuffer, 1>     vertexBuffers      = { mesh.positions.buffer };
-
-        vkCmdBindVertexBuffers(pFrameContext->pFrame->cmd, 0U, 1U, vertexBuffers.data(), vertexBufferOffset.data());
-
-        m_VisibilityPushConstants.MatrixMVP = pMesh->GetLocalToWorld() * matrixVP;
-        m_VisibilityPushConstants.MeshID    = meshIndex;
-
-        vkCmdPushConstants(pFrameContext->pFrame->cmd,
-                           m_VisibilityPipelineLayout,
-                           VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-                           0U,
-                           sizeof(VisibilityPushConstants),
-                           &m_VisibilityPushConstants);
-
-        vkCmdDrawIndexed(pFrameContext->pFrame->cmd, pMesh->GetIndexCount(), 1U, 0U, 0U, 0U);
-    }
-
     PROFILE_END;
 
     vkCmdEndRendering(pFrameContext->pFrame->cmd);
@@ -479,7 +448,6 @@ void RenderPass::DebugPassExecute(FrameContext* pFrameContext)
     SetDefaultRenderState(pFrameContext->pFrame->cmd);
 
     m_DebugPushConstants.DebugModeValue = static_cast<uint32_t>(pFrameContext->debugMode);
-    m_DebugPushConstants.MeshCount      = static_cast<uint32_t>(pFrameContext->pScene->GetMeshList().size());
 
     vkCmdPushConstants(pFrameContext->pFrame->cmd,
                        m_DebugPipelineLayout,

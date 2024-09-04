@@ -7,3 +7,6 @@
 [submodule "External/dds_image"]
 	path = External/dds_image
 	url = git@github.com:spnda/dds_image.git
+[submodule "External/meshoptimizer"]
+	path = External/meshoptimizer
+	url = git@github.com:zeux/meshoptimizer.git

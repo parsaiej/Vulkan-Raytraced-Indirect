@@ -65,6 +65,11 @@ if (${USE_SUPERLUMINAL})
     find_package(SuperluminalAPI REQUIRED)
 endif()
 
+# Meshoptimizer
+# --------------------------------
+
+add_subdirectory(External/meshoptimizer/)
+
 # Imgui
 # --------------------------------
 
@@ -120,6 +125,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     tinyobjloader::tinyobjloader
     glm::glm-header-only
     Microsoft::DirectXTK12
+    meshoptimizer
     ${PXR_LIBRARIES}
 )
 

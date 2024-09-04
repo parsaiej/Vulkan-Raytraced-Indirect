@@ -9,7 +9,6 @@ const uint32_t kWindowHeight      = 1080U; // NOLINT
 const uint32_t kMaxFramesInFlight = 3U;
 
 struct FrameParams;
-class Scene;
 
 class RenderContext
 {
@@ -32,7 +31,6 @@ public:
     inline VkCommandPool&    GetCommandPool() { return m_VKCommandPool; }
     inline VkDescriptorPool& GetDescriptorPool() { return m_VKDescriptorPool; }
     inline GLFWwindow*       GetWindow() { return m_Window; }
-    inline Scene*            GetScene() { return m_Scene.get(); }
 
     inline const VkImage&     GetSwapchainImage(uint32_t swapChainImageIndex) { return m_VKSwapchainImages.at(swapChainImageIndex); }
     inline const VkImageView& GetSwapchainImageView(uint32_t swapChainImageIndex) { return m_VKSwapchainImageViews.at(swapChainImageIndex); }
@@ -65,9 +63,6 @@ private:
     std::array<VkSemaphore, kMaxFramesInFlight>     m_VKImageAvailableSemaphores {};
     std::array<VkSemaphore, kMaxFramesInFlight>     m_VKRenderCompleteSemaphores {};
     std::array<VkFence, kMaxFramesInFlight>         m_VKInFlightFences {};
-
-    // Scene (Constructed from Hydra)
-    std::unique_ptr<Scene> m_Scene;
 };
 
 #endif
