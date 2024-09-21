@@ -9,6 +9,7 @@ const uint32_t kWindowHeight      = 1080U; // NOLINT
 const uint32_t kMaxFramesInFlight = 3U;
 
 struct FrameParams;
+struct Buffer;
 
 class RenderContext
 {
@@ -25,6 +26,7 @@ public:
     inline VkDevice&         GetDevice() { return m_VKDeviceLogical; }
     inline VkPhysicalDevice& GetDevicePhysical() { return m_VKDevicePhysical; }
     inline VmaAllocator&     GetAllocator() { return m_VKMemoryAllocator; }
+    inline std::mutex&       GetAllocatorMutex() { return m_VKAllocatorMutex; }
     inline VkQueue&          GetCommandQueue() { return m_VKCommandQueue; }
     inline uint32_t&         GetCommandQueueIndex() { return m_VKCommandQueueIndex; }
     inline std::mutex&       GetCommandQueueMutex() { return m_VKCommandQueueMutex; }
@@ -34,6 +36,23 @@ public:
 
     inline const VkImage&     GetSwapchainImage(uint32_t swapChainImageIndex) { return m_VKSwapchainImages.at(swapChainImageIndex); }
     inline const VkImageView& GetSwapchainImageView(uint32_t swapChainImageIndex) { return m_VKSwapchainImageViews.at(swapChainImageIndex); }
+
+    // Misc. helpers.
+    // --------------------------------------------------
+    void CreateCommandPool(VkCommandPool* pCommandPool);
+    void CreateStagingBuffer(VkDeviceSize size, Buffer* pStagingBUffer);
+
+    struct CreateDeviceBufferWithDataParams
+    {
+        void*              pData;
+        VkDeviceSize       size;
+        VkBufferUsageFlags usage;
+        VkCommandPool      commandPool;
+        const Buffer*      pBufferStaging;
+        Buffer*            pBufferDevice;
+    };
+
+    void CreateDeviceBufferWithData(const CreateDeviceBufferWithDataParams& params);
 
 private:
 
@@ -51,6 +70,9 @@ private:
 
     // For multi-threaded queue submissions
     std::mutex m_VKCommandQueueMutex;
+
+    // For multi-threaded allocations
+    std::mutex m_VKAllocatorMutex;
 
     // Swapchain Primitives
     VkSwapchainKHR           m_VKSwapchain = VK_NULL_HANDLE;

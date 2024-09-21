@@ -14,9 +14,7 @@ public:
     void        Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParam, HdDirtyBits* pDirtyBits, const TfToken& reprToken) override;
     void        Finalize(HdRenderParam* renderParam) override;
 
-    inline const uint64_t&   GetResourceHandle() const { return m_ResourceHandle; }
     inline const GfMatrix4f& GetLocalToWorld() const { return m_LocalToWorld; }
-    inline const uint32_t&   GetIndexCount() const { return m_IndexCount; }
 
 protected:
 
@@ -27,13 +25,7 @@ private:
 
     RenderDelegate* m_Owner;
 
-    uint64_t m_ResourceHandle {};
-
-    glm::vec3 m_DebugColor {};
-
     GfMatrix4f m_LocalToWorld {};
-
-    uint32_t m_IndexCount;
 };
 
 #endif

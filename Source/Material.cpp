@@ -138,16 +138,16 @@ void Material::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParam
     // Obtain the resource registry + push the material request.
     auto pResourceRegistry = std::static_pointer_cast<ResourceRegistry>(pSceneDelegate->GetRenderIndex().GetResourceRegistry());
     {
-        m_ResourceHandle = pResourceRegistry->PushMaterialRequest(
-            { id,
-              TryGetSingleParameterForInput<SdfAssetPath>(kMaterialInputBaseColor, &network, &rootNode->second),
-              TryGetSingleParameterForInput<SdfAssetPath>(kMaterialInputNormal, &network, &rootNode->second),
-              TryGetSingleParameterForInput<SdfAssetPath>(kMaterialInputRoughness, &network, &rootNode->second),
-              TryGetSingleParameterForInput<SdfAssetPath>(kMaterialInputMetallic, &network, &rootNode->second) });
+        //        m_ResourceHandle = pResourceRegistry->PushMaterialRequest(
+        //            { id,
+        //              TryGetSingleParameterForInput<SdfAssetPath>(kMaterialInputBaseColor, &network, &rootNode->second),
+        //              TryGetSingleParameterForInput<SdfAssetPath>(kMaterialInputNormal, &network, &rootNode->second),
+        //              TryGetSingleParameterForInput<SdfAssetPath>(kMaterialInputRoughness, &network, &rootNode->second),
+        //              TryGetSingleParameterForInput<SdfAssetPath>(kMaterialInputMetallic, &network, &rootNode->second) });
     }
 
-    // Clear the dirty bits.
-    *pDirtyBits &= ~HdChangeTracker::AllSceneDirtyBits;
+        // Clear the dirty bits.
+        * pDirtyBits &= ~HdChangeTracker::AllSceneDirtyBits;
 
     PROFILE_END;
 }

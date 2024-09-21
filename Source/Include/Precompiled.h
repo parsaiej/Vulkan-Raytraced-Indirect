@@ -85,6 +85,12 @@ using namespace DirectX::SimpleMath;
 
 #include <meshoptimizer.h>
 
+// TBB Includes
+// ---------------------------------------------------------
+
+#include <tbb/parallel_for_each.h>
+#include <tbb/task_group.h>
+
 // OpenUSD Includes
 // ---------------------------------------------------------
 

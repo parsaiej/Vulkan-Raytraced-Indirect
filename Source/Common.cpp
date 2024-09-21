@@ -594,3 +594,36 @@ void BindGraphicsShaders(VkCommandBuffer cmd, VkShaderEXT vkVertexShader, VkShad
 
     vkCmdBindShadersEXT(cmd, static_cast<uint32_t>(vkGraphicsShaderStageBits.size()), vkGraphicsShaderStageBits.data(), vkGraphicsShaders.data());
 }
+
+// Local utility for emplacing an alpha value every 12 bytes.
+void InterleaveImageAlpha(stbi_uc** pImageData, int& width, int& height, int& channels)
+{
+    auto* pAlphaImage = new unsigned char[width * height * 4U]; // NOLINT
+
+    for (int i = 0; i < width * height; ++i)
+    {
+        switch (channels)
+        {
+            case 1U:
+                pAlphaImage[i * 4 + 0] = (*pImageData)[i * channels + 0]; // NOLINT R
+                pAlphaImage[i * 4 + 1] = (*pImageData)[i * channels + 0]; // NOLINT G
+                pAlphaImage[i * 4 + 2] = (*pImageData)[i * channels + 0]; // NOLINT B
+                break;
+            case 3U:
+                pAlphaImage[i * 4 + 0] = (*pImageData)[i * channels + 0]; // NOLINT R
+                pAlphaImage[i * 4 + 1] = (*pImageData)[i * channels + 1]; // NOLINT G
+                pAlphaImage[i * 4 + 2] = (*pImageData)[i * channels + 2]; // NOLINT B
+                break;
+        }
+
+        pAlphaImage[i * 4 + 3] = 255; // NOLINT A (fully opaque)
+    }
+
+    // Free the original image memory
+    stbi_image_free(*pImageData);
+
+    *pImageData = pAlphaImage;
+
+    // There is now an alpha channel.
+    channels = 4U;
+}

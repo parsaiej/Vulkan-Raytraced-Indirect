@@ -2,66 +2,45 @@
 #define RESOURCE_REGISTRY_H
 
 class Mesh;
+class Material;
 class RenderContext;
 
 #include <Common.h>
+
+struct DrawItem
+{
+    Mesh* pMesh = nullptr;
+
+    uint32_t indexCount;
+
+    Buffer bufferI;
+    Buffer bufferV;
+};
+
+struct DrawItemRequest
+{
+    Mesh* pMesh;
+
+    void*  pIndexBufferHost;
+    size_t indexBufferSize;
+
+    void*  pVertexBufferHost;
+    size_t vertexBufferSize;
+};
 
 class ResourceRegistry : public HdResourceRegistry
 {
 public:
 
-    struct MeshRequest
-    {
-        SdfPath      id;
-        SdfPath      materialId;
-        VtVec3fArray pPoints;
-        VtVec3iArray pTriangles;
-    };
-
-    struct MaterialRequest
-    {
-        SdfPath      id;
-        SdfAssetPath imagePathAlbedo;
-        SdfAssetPath imagePathNormal;
-        SdfAssetPath imagePathRoughness;
-        SdfAssetPath imagePathMetallic;
-    };
-
-    struct MeshResources
-    {
-        Buffer   indices;
-        Buffer   positions;
-        uint32_t materialResourceIndex {};
-    };
-
-    struct MaterialResources
-    {
-        Image albedo;
-        Image normal;
-        Image metallic;
-        Image roughness;
-    };
-
-    // Queues a GPU-upload request for vertex and index mesh buffers.
-    inline uint64_t PushMeshRequest(MeshRequest meshRequest)
-    {
-        m_PendingMeshRequests.emplace(meshRequest);
-        return meshRequest.id.GetHash();
-    }
-
-    inline uint64_t PushMaterialRequest(MaterialRequest materialRequest)
-    {
-        m_PendingMaterialRequests.emplace(materialRequest);
-        return materialRequest.id.GetHash();
-    }
-
-    inline bool IsBusy() { return m_CommitJobBusy.load(); }
-    inline bool IsComplete() { return m_CommitJobComplete.load(); }
-
-    inline const VkDescriptorSetLayout& GetResourceDescriptorLayout() { return m_ResourceRegistryDescriptorSetLayout; }
-    inline const VkDescriptorSet&       GetResourceDescriptorSet() { return m_ResourceRegistryDescriptorSet; }
-
     explicit ResourceRegistry(RenderContext* pRenderContext);
+
+    ~ResourceRegistry() noexcept override {};
+
+    // Maps a pointer to the allocated memory chunk for the mesh to copy to.
+    void AddMesh(Mesh* pMesh, uint64_t bufferSizeI, uint64_t bufferSizeV, void** ppBufferI, void** ppBufferV);
+
+    inline const std::vector<DrawItem>& GetDrawItems() { return m_DrawItems; }
+    inline bool                         IsBusy() { return m_CommitTaskBusy.load(); }
 
 protected:
 
@@ -70,47 +49,22 @@ protected:
 
 private:
 
-    void CommitJob();
-
-    uint32_t m_BufferCounter {};
-    uint32_t m_ImageCounter {};
-
-    const static uint32_t kMaxBufferResources = 16U * 8192U;
-    const static uint32_t kMaxImageResources  = 512U;
+    std::mutex m_MeshAllocationMutex;
 
     RenderContext* m_RenderContext;
 
-    std::queue<MeshRequest>     m_PendingMeshRequests;
-    std::queue<MaterialRequest> m_PendingMaterialRequests;
+    std::atomic<bool> m_CommitTaskBusy;
+    tbb::task_group   m_CommitTask;
 
-    std::vector<MeshResources>     m_MeshResources;
-    std::vector<MaterialResources> m_MaterialResources;
+    std::queue<DrawItemRequest> m_DrawItemRequests;
 
-    // The backing resources for Mesh/Materials.
-    std::array<Buffer, kMaxBufferResources> m_BufferResources;
-    std::array<Image, kMaxImageResources>   m_ImageResources;
+    std::vector<DrawItem> m_DrawItems;
 
-    // Using VK_EXT_descriptor_indexing to bind all resource arrays to PSO.
-    VkDescriptorSetLayout m_ResourceRegistryDescriptorSetLayout;
-    VkDescriptorSet       m_ResourceRegistryDescriptorSet;
+    std::atomic<uint64_t> m_HostBufferPoolSizeI;
+    std::atomic<uint64_t> m_HostBufferPoolSizeV;
 
-    void ProcessMeshRequest(RenderContext*                       pRenderContext,
-                            const ResourceRegistry::MeshRequest& meshRequest,
-                            Buffer&                              stagingBuffer,
-                            ResourceRegistry::MeshResources*     pMesh);
-
-    void ProcessMaterialRequest(RenderContext*                           pRenderContext,
-                                const ResourceRegistry::MaterialRequest& materialRequest,
-                                Buffer&                                  stagingBuffer,
-                                ResourceRegistry::MaterialResources*     pMaterial);
-
-    VkCommandPool m_ResourceCreationCommandPool;
-
-    std::jthread      m_CommitJobThread;
-    std::atomic<bool> m_CommitJobBusy;
-    std::atomic<bool> m_CommitJobComplete;
-
-    // Descriptor Set
+    std::array<char8_t, kIndicesPoolMaxBytes>  m_HostBufferPoolI;
+    std::array<char8_t, kVerticesPoolMaxBytes> m_HostBufferPoolV;
 };
 
 #endif

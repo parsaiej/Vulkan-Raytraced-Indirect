@@ -214,7 +214,7 @@ void RenderPass::DebugPassCreate(RenderContext* pRenderContext)
     std::vector<VkDescriptorSetLayout> debugPipelineSetLayouts;
     {
         debugPipelineSetLayouts.push_back(m_DebugDescriptorSetLayout);
-        debugPipelineSetLayouts.push_back(pResourceRegistry->GetResourceDescriptorLayout());
+        // debugPipelineSetLayouts.push_back(pResourceRegistry->GetResourceDescriptorLayout());
     }
 
     // Pipeline Layout
@@ -395,6 +395,35 @@ void RenderPass::VisibilityPassExecute(FrameContext* pFrameContext)
 
     PROFILE_START("Record Visibility Buffer Commands");
 
+    const auto& drawItems = pFrameContext->pResourceRegistry->GetDrawItems();
+
+    m_VisibilityPushConstants.MeshCount = static_cast<uint32_t>(drawItems.size());
+
+    // TODO(parsa): Go wide on all cores to record these commands on a secondary command list.
+    for (uint32_t drawItemIndex = 0U; drawItemIndex < drawItems.size(); drawItemIndex++)
+    {
+        auto drawItem = drawItems[drawItemIndex];
+
+        vkCmdBindIndexBuffer(pFrameContext->pFrame->cmd, drawItem.bufferI.buffer, 0U, VK_INDEX_TYPE_UINT32);
+
+        std::array<VkDeviceSize, 1> vertexBufferOffset = { 0U };
+        std::array<VkBuffer, 1>     vertexBuffers      = { drawItem.bufferV.buffer };
+
+        vkCmdBindVertexBuffers(pFrameContext->pFrame->cmd, 0U, 1U, vertexBuffers.data(), vertexBufferOffset.data());
+
+        m_VisibilityPushConstants.MatrixMVP = drawItem.pMesh->GetLocalToWorld() * matrixVP;
+        m_VisibilityPushConstants.MeshID    = drawItemIndex;
+
+        vkCmdPushConstants(pFrameContext->pFrame->cmd,
+                           m_VisibilityPipelineLayout,
+                           VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                           0U,
+                           sizeof(VisibilityPushConstants),
+                           &m_VisibilityPushConstants);
+
+        vkCmdDrawIndexed(pFrameContext->pFrame->cmd, drawItem.indexCount, 1U, 0U, 0U, 0U);
+    }
+
     PROFILE_END;
 
     vkCmdEndRendering(pFrameContext->pFrame->cmd);
@@ -448,6 +477,7 @@ void RenderPass::DebugPassExecute(FrameContext* pFrameContext)
     SetDefaultRenderState(pFrameContext->pFrame->cmd);
 
     m_DebugPushConstants.DebugModeValue = static_cast<uint32_t>(pFrameContext->debugMode);
+    m_DebugPushConstants.MeshCount      = static_cast<uint32_t>(pFrameContext->pResourceRegistry->GetDrawItems().size());
 
     vkCmdPushConstants(pFrameContext->pFrame->cmd,
                        m_DebugPipelineLayout,
@@ -493,14 +523,14 @@ void RenderPass::DebugPassExecute(FrameContext* pFrameContext)
     // For the second descriptor set, we use traditional descriptors that are pre-created during the alst resource registry update.
     // We bind this set to the second slot.
     {
-        vkCmdBindDescriptorSets(pFrameContext->pFrame->cmd,
-                                VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                m_DebugPipelineLayout,
-                                1U,
-                                1U,
-                                &pFrameContext->pResourceRegistry->GetResourceDescriptorSet(),
-                                0U,
-                                nullptr);
+        // vkCmdBindDescriptorSets(pFrameContext->pFrame->cmd,
+        //                         VK_PIPELINE_BIND_POINT_GRAPHICS,
+        //                         m_DebugPipelineLayout,
+        //                         1U,
+        //                         1U,
+        //                         &pFrameContext->pResourceRegistry->GetResourceDescriptorSet(),
+        //                         0U,
+        //                         nullptr);
     }
 
     BindGraphicsShaders(pFrameContext->pFrame->cmd, m_ShaderMap[ShaderID::DebugVert], m_ShaderMap[ShaderID::DebugFrag]);
@@ -550,7 +580,7 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
     //    TODO(parsa): Use https://github.com/zeux/meshoptimizer to produce optimized meshlets
     //                 that can be culled in a mesh shader.
 
-    if (frameContext.pResourceRegistry->IsComplete())
+    if (!frameContext.pResourceRegistry->IsBusy())
         VisibilityPassExecute(&frameContext);
 
     // 3) Material Pass

@@ -368,3 +368,77 @@ void RenderContext::Dispatch(const std::function<void(FrameParams)>& commandsFun
         deltaTime = frameTimeEnd - frameTimeBegin;
     }
 }
+
+// Misc. helpers.
+// --------------------------------------------------
+
+void RenderContext::CreateCommandPool(VkCommandPool* pCommandPool)
+{
+    VkCommandPoolCreateInfo vkCommandPoolInfo = { VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO };
+    {
+        vkCommandPoolInfo.queueFamilyIndex = m_VKCommandQueueIndex;
+        vkCommandPoolInfo.flags            = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    }
+    Check(vkCreateCommandPool(m_VKDeviceLogical, &vkCommandPoolInfo, nullptr, pCommandPool), "Failed to create a thread-local Vulkan Command Pool");
+}
+
+void RenderContext::CreateStagingBuffer(VkDeviceSize size, Buffer* pStagingBuffer)
+{
+    VkBufferCreateInfo bufferInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+    bufferInfo.usage              = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    bufferInfo.size               = size;
+
+    VmaAllocationCreateInfo allocInfo = {};
+    allocInfo.usage                   = VMA_MEMORY_USAGE_AUTO;
+    allocInfo.flags                   = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+
+    Check(vmaCreateBuffer(GetAllocator(), &bufferInfo, &allocInfo, &pStagingBuffer->buffer, &pStagingBuffer->bufferAllocation, nullptr),
+          "Failed to create staging buffer memory.");
+}
+
+void RenderContext::CreateDeviceBufferWithData(const CreateDeviceBufferWithDataParams& params)
+{
+    // Create dedicate device memory for the mesh buffer.
+    // -----------------------------------------------------
+
+    VkBufferCreateInfo bufferInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+    bufferInfo.size               = params.size;
+    bufferInfo.usage              = params.usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+
+    VmaAllocationCreateInfo allocInfo = {};
+    allocInfo.usage                   = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+
+    Check(vmaCreateBuffer(GetAllocator(), &bufferInfo, &allocInfo, &params.pBufferDevice->buffer, &params.pBufferDevice->bufferAllocation, nullptr),
+          "Failed to create dedicated buffer memory.");
+
+    // Copy Host -> Staging Memory.
+    // -----------------------------------------------------
+
+    void* pMappedData = nullptr;
+    Check(vmaMapMemory(GetAllocator(), params.pBufferStaging->bufferAllocation, &pMappedData), "Failed to map a pointer to staging memory.");
+    {
+        // Copy from Host -> Staging memory.
+        memcpy(pMappedData, params.pData, params.size);
+
+        vmaUnmapMemory(GetAllocator(), params.pBufferStaging->bufferAllocation);
+    }
+
+    // Copy Staging -> Device Memory.
+    // -----------------------------------------------------
+
+    VkCommandBuffer vkCommand = VK_NULL_HANDLE;
+    SingleShotCommandBegin(this, vkCommand, params.commandPool);
+    {
+        VmaAllocationInfo allocationInfo;
+        vmaGetAllocationInfo(GetAllocator(), params.pBufferDevice->bufferAllocation, &allocationInfo);
+
+        VkBufferCopy copyInfo;
+        {
+            copyInfo.srcOffset = 0U;
+            copyInfo.dstOffset = 0U;
+            copyInfo.size      = params.size;
+        }
+        vkCmdCopyBuffer(vkCommand, params.pBufferStaging->buffer, params.pBufferDevice->buffer, 1U, &copyInfo);
+    }
+    SingleShotCommandEnd(this, vkCommand);
+}

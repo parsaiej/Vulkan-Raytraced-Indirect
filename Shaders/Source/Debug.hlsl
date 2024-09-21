@@ -89,5 +89,5 @@ float4 Frag(Interpolators i) : SV_Target
         break;
     }
 
-    return float4(0, 0, 0, 1);
+    return float4(1, 0, 0, 1);
 }

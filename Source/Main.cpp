@@ -74,6 +74,10 @@ int main()
     spdlog::set_default_logger(logger);
     spdlog::set_pattern("%^[%l] %v%$");
 
+#ifdef _DEBUG
+    spdlog::set_level(spdlog::level::debug);
+#endif
+
 #ifdef USE_LIVEPP
     // Locate the LivePP Agent.
     auto lppAgent = lpp::LppCreateDefaultAgent(nullptr, L"..\\External\\LivePP");

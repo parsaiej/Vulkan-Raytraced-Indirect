@@ -1,6 +1,12 @@
 #ifndef COMMON_H
 #define COMMON_H
 
+// Limits
+// ---------------------------------------------------------
+
+constexpr uint64_t kIndicesPoolMaxBytes  = 512LL * 1024 * 1024;
+constexpr uint64_t kVerticesPoolMaxBytes = 512LL * 1024 * 1024;
+
 // Logging + crash utility when an assertion fails.
 // ---------------------------------------------------------
 
@@ -137,5 +143,7 @@ void InitializeUserInterface(RenderContext* pRenderContext);
 void DrawUserInterface(RenderContext* pRenderContext, uint32_t swapChainImageIndex, VkCommandBuffer cmd, const std::function<void()>& interfaceFunc);
 
 void BindGraphicsShaders(VkCommandBuffer cmd, VkShaderEXT vkVertexShader, VkShaderEXT vkFragmentShader);
+
+void InterleaveImageAlpha(stbi_uc** pImageData, int& width, int& height, int& channels);
 
 #endif

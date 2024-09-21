@@ -4,6 +4,8 @@
 #include <RenderDelegate.h>
 #include <ResourceRegistry.h>
 
+#include <cstddef>
+
 HdDirtyBits Mesh::GetInitialDirtyBitsMask() const { return HdChangeTracker::AllSceneDirtyBits; }
 
 void Mesh::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParams, HdDirtyBits* pDirtyBits, const TfToken& reprToken)
@@ -11,9 +13,67 @@ void Mesh::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParams, H
     if ((*pDirtyBits & HdChangeTracker::AllSceneDirtyBits) == 0U)
         return;
 
+    std::lock_guard<std::mutex> renderContextLock(m_Owner->GetRenderContextMutex());
+
     PROFILE_START("Sync Mesh");
 
-    std::lock_guard<std::mutex> renderContextLock(m_Owner->GetRenderContextMutex());
+    auto SafeGet = [&]<typename T>(const TfToken& token, T& data)
+    {
+        VtValue pValue = pSceneDelegate->Get(GetId(), token);
+
+        if (!pValue.IsHolding<T>())
+        {
+            data = T();
+            return;
+        }
+
+        data = pValue.Get<T>();
+    };
+
+    // Extract pointers to data lists for the mesh. Some might not exist so we check.
+    VtVec3fArray pPoints;
+    SafeGet(HdTokens->points, pPoints);
+
+    if (pPoints.empty())
+    {
+        // Early exit on mesh prims with invalid topology.
+        *pDirtyBits &= ~HdChangeTracker::AllSceneDirtyBits;
+
+        return;
+    }
+
+    // Extract topology information (mainly to get face count).
+    HdMeshTopology topology = pSceneDelegate->GetMeshTopology(GetId());
+
+    // Initialize the mesh util.
+    HdMeshUtil meshUtil(&topology, GetId());
+
+    // Reconstruct the indices / mesh topology.
+    VtIntArray   trianglePrimitiveParams;
+    VtVec3iArray triangles;
+    meshUtil.ComputeTriangleIndices(&triangles, &trianglePrimitiveParams);
+
+    auto* pResourceRegistry = std::static_pointer_cast<ResourceRegistry>(m_Owner->GetResourceRegistry()).get();
+
+    uint64_t sizeBytesI = sizeof(GfVec3i) * triangles.size();
+    uint64_t sizeBytesV = sizeof(GfVec3f) * pPoints.size();
+
+    void* pVertexBuffer = nullptr;
+    void* pIndexBuffer  = nullptr;
+
+    // Fetch the allocation needed.
+    pResourceRegistry->AddMesh(this, sizeBytesI, sizeBytesV, &pIndexBuffer, &pVertexBuffer);
+
+    // Copy into the pool.
+    memcpy(pVertexBuffer, pPoints.data(), sizeBytesV);
+    memcpy(pIndexBuffer, triangles.data(), sizeBytesI);
+
+    spdlog::info("Pre-processed Mesh: {}", GetId().GetText());
+
+    // TODO(parsa): Can serialize the post-processed mesh to disk to speed up future executions of the application.
+
+    // Get the world matrix.
+    m_LocalToWorld = GfMatrix4f(pSceneDelegate->GetTransform(GetId()));
 
     // Clear the dirty bits.
     *pDirtyBits &= ~HdChangeTracker::AllSceneDirtyBits;
