@@ -15,7 +15,7 @@ ResourceRegistry::ResourceRegistry(RenderContext* pRenderContext) :
     // Create a descriptor set layout defining resource arrays for draw items.
     // --------------------------------------------
 
-    std::vector<VkDescriptorBindingFlags> bindingFlags(2U, VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT_EXT);
+    std::vector<VkDescriptorBindingFlags> bindingFlags(3U, VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT_EXT);
 
     VkDescriptorSetLayoutBindingFlagsCreateInfo descriptorSetFlags { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO_EXT };
     {
@@ -30,6 +30,9 @@ ResourceRegistry::ResourceRegistry(RenderContext* pRenderContext) :
 
         // Binding 1: Vertex Buffers
         bindings.push_back(VkDescriptorSetLayoutBinding(1U, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4096U, VK_SHADER_STAGE_FRAGMENT_BIT, VK_NULL_HANDLE));
+
+        // Binding 2: Meta-data
+        bindings.push_back(VkDescriptorSetLayoutBinding(2U, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1U, VK_SHADER_STAGE_FRAGMENT_BIT, VK_NULL_HANDLE));
     }
 
     VkDescriptorSetLayoutCreateInfo descriptorSetLayoutInfo { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
@@ -82,6 +85,9 @@ void ResourceRegistry::BuildDescriptors()
         WriteDrawItemBufferDescriptor(1U, drawItemIndex, drawItem.bufferV.buffer);
     }
 
+    // Also write the meta-data.
+    WriteDrawItemBufferDescriptor(2U, 0U, m_DrawItemMetaDataBuffer.buffer);
+
     spdlog::info("Created draw item buffer descriptors.");
 }
 
@@ -117,6 +123,9 @@ void ResourceRegistry::_Commit()
 
             auto requestCount = static_cast<uint32_t>(m_DrawItemRequests.size());
             auto requestIndex = 0U;
+
+            // Track meta-data.
+            std::vector<DrawItemMetaData> drawItemMetaData;
 
             // Clear the requests.
             while (!m_DrawItemRequests.empty())
@@ -154,8 +163,20 @@ void ResourceRegistry::_Commit()
                 // Push the draw item.
                 m_DrawItems.push_back(drawItem);
 
+                // Push the gpu meta-data about the draw item.
+                drawItemMetaData.push_back({ drawItem.indexCount / 3U, 0U });
+
                 // Request processed, remove.
                 m_DrawItemRequests.pop();
+            }
+
+            // Upload the meta-data.
+            {
+                createInfo.pData         = drawItemMetaData.data();
+                createInfo.size          = sizeof(DrawItemMetaData) * drawItemMetaData.size();
+                createInfo.pBufferDevice = &m_DrawItemMetaDataBuffer;
+                createInfo.usage         = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+                m_RenderContext->CreateDeviceBufferWithData(createInfo);
             }
 
             // Free the scratch memory.
@@ -179,6 +200,8 @@ void ResourceRegistry::_GarbageCollect()
     vkDeviceWaitIdle(m_RenderContext->GetDevice());
 
     vkDestroyDescriptorSetLayout(m_RenderContext->GetDevice(), m_DrawItemDataDescriptorLayout, nullptr);
+
+    vmaDestroyBuffer(m_RenderContext->GetAllocator(), m_DrawItemMetaDataBuffer.buffer, m_DrawItemMetaDataBuffer.bufferAllocation);
 
     for (auto& drawItem : m_DrawItems)
     {

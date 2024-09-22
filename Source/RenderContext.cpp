@@ -406,6 +406,9 @@ void RenderContext::CreateStagingBuffer(VkDeviceSize size, Buffer* pStagingBuffe
 
 void RenderContext::CreateDeviceBufferWithData(const CreateDeviceBufferWithDataParams& params)
 {
+    if (params.pData == nullptr || params.size == 0U)
+        return;
+
     // Create dedicate device memory for the mesh buffer.
     // -----------------------------------------------------
 

@@ -17,6 +17,12 @@ struct DrawItem
     Buffer bufferV;
 };
 
+struct DrawItemMetaData
+{
+    uint32_t faceCount;
+    uint32_t materialIndex;
+};
+
 struct DrawItemRequest
 {
     Mesh* pMesh;
@@ -63,6 +69,8 @@ private:
 
     std::queue<DrawItemRequest> m_DrawItemRequests;
     std::vector<DrawItem>       m_DrawItems;
+
+    Buffer m_DrawItemMetaDataBuffer;
 
     // Using VK_EXT_descriptor_indexing to bind all resource arrays to PSO.
     VkDescriptorSetLayout m_DrawItemDataDescriptorLayout;

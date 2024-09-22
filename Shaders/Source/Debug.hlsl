@@ -26,6 +26,9 @@ ByteAddressBuffer _IndexBuffers[];
 [[vk::binding(1, 1)]]
 ByteAddressBuffer _VertexBuffers[];
 
+[[vk::binding(2, 1)]]
+ByteAddressBuffer _DrawItemMetaData;
+
 float3 ColorCycle(uint index, uint count)
 {
 	float t = frac(index / (float)count);
@@ -51,8 +54,12 @@ float4 DebugPrimitiveID(Interpolators i)
 
     if (!visibility)
         return 0;
+        
+    // Decode mesh and triangle data. 
+    const uint meshIndex = visibility >> 16U;
+    const uint primIndex = visibility & 0xFFFF;
 
-    return float4(ColorCycle(visibility & 0xFFFF, 0xF), 1);
+    return float4(ColorCycle(primIndex % 4, 4), 1);
 }
 
 float4 DebugBarycentricCoordinate(Interpolators i)
