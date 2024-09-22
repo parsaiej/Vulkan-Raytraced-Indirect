@@ -68,7 +68,7 @@ float4 DebugPrimitiveID(Interpolators i)
     const uint meshIndex = visibility >> 16U;
     const uint primIndex = visibility & 0xFFFF;
 
-    return float4(ColorCycle(primIndex % 4, 4), 1);
+    return float4(ColorCycle(primIndex % 3, 3), 1);
 }
 
 #include "Barycentric.hlsl"

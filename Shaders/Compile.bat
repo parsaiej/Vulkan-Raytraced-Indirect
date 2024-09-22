@@ -5,7 +5,7 @@ if "%1"=="Vert" (
 )
 
 if "%1"=="Frag" (
-    C:\VulkanSDK\1.3.290.0\Bin\dxc.exe -Od -Zi -E Frag -T ps_6_1 -spirv -fspv-target-env=vulkan1.3 -Fo Compiled\\%2.frag.spv Source\\%2.hlsl
+    C:\VulkanSDK\1.3.290.0\Bin\dxc.exe -E Frag -T ps_6_1 -spirv -fspv-target-env=vulkan1.3 -Fo Compiled\\%2.frag.spv Source\\%2.hlsl
 )
 
 if "%1"=="Ray" (

@@ -53,7 +53,7 @@ inline void Check(bool a, const char* b)
 
 #endif
 
-// Profile Macro
+// CPU Profile Macro
 // ---------------------------------------------------------
 
 #ifdef USE_SUPERLUMINAL
@@ -63,6 +63,32 @@ inline void Check(bool a, const char* b)
 #define PROFILE_START(x)
 #define PROFILE_END
 #endif
+
+// GPU Profile RAII
+// ---------------------------------------------------------
+
+class GPUProfileScope
+{
+private:
+
+    VkCommandBuffer m_Cmd;
+
+public:
+
+    explicit GPUProfileScope(VkCommandBuffer cmd, const char* label) : m_Cmd(cmd)
+    {
+        VkDebugUtilsLabelEXT startLabel = {};
+        startLabel.sType                = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;
+        startLabel.pLabelName           = label;
+        startLabel.color[0]             = 1.0F; // Red
+        startLabel.color[1]             = 0.0F;
+        startLabel.color[2]             = 0.0F;
+        startLabel.color[3]             = 1.0F;
+        vkCmdBeginDebugUtilsLabelEXT(m_Cmd, &startLabel);
+    }
+
+    ~GPUProfileScope() { vkCmdEndDebugUtilsLabelEXT(m_Cmd); }
+};
 
 // Collection of vulkan primitives to hold the current frame state.
 // ---------------------------------------------------------

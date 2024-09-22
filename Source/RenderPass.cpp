@@ -334,6 +334,8 @@ RenderPass::~RenderPass()
 
 void RenderPass::VisibilityPassExecute(FrameContext* pFrameContext)
 {
+    GPUProfileScope profileScope(pFrameContext->pFrame->cmd, "Visibility Pass");
+
     VulkanColorImageBarrier(pFrameContext->pFrame->cmd,
                             m_VisibilityBuffer.image,
                             VK_IMAGE_LAYOUT_GENERAL,
@@ -440,6 +442,8 @@ void RenderPass::VisibilityPassExecute(FrameContext* pFrameContext)
 
 void RenderPass::DebugPassExecute(FrameContext* pFrameContext)
 {
+    GPUProfileScope profileScope(pFrameContext->pFrame->cmd, "Debug Pass");
+
     VulkanColorImageBarrier(pFrameContext->pFrame->cmd,
                             m_VisibilityBuffer.image,
                             VK_IMAGE_LAYOUT_GENERAL,
