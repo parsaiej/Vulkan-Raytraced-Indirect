@@ -42,6 +42,9 @@ public:
     inline const std::vector<DrawItem>& GetDrawItems() { return m_DrawItems; }
     inline bool                         IsBusy() { return m_CommitTaskBusy.load(); }
 
+    inline const VkDescriptorSetLayout& GetDrawItemDataDescriptorLayout() { return m_DrawItemDataDescriptorLayout; }
+    inline const VkDescriptorSet&       GetDrawItemDataDescriptorSet() { return m_DrawItemDataDescriptorSet; }
+
 protected:
 
     void _Commit() override;
@@ -63,9 +66,7 @@ private:
 
     // Using VK_EXT_descriptor_indexing to bind all resource arrays to PSO.
     VkDescriptorSetLayout m_DrawItemDataDescriptorLayout;
-
-    VkDescriptorSet m_DrawItemIndexBuffersDescriptorSet;
-    VkDescriptorSet m_DrawItemVertexBuffersDescriptorSet;
+    VkDescriptorSet       m_DrawItemDataDescriptorSet;
 
     std::atomic<uint64_t> m_HostBufferPoolSizeI;
     std::atomic<uint64_t> m_HostBufferPoolSizeV;

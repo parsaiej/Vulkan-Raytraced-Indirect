@@ -21,10 +21,10 @@ Texture2D<uint> _VisibilityBuffer;
 Texture2D<float> _DepthBuffer;
 
 [[vk::binding(0, 1)]]
-ByteAddressBuffer _MeshBuffers[];
+ByteAddressBuffer _IndexBuffers[];
 
 [[vk::binding(1, 1)]]
-ByteAddressBuffer _MeshMetadataBuffer;
+ByteAddressBuffer _VertexBuffers[];
 
 float3 ColorCycle(uint index, uint count)
 {
@@ -64,7 +64,9 @@ float4 DebugBarycentricCoordinate(Interpolators i)
     const uint primIndex = visibility & 0xFFFF;
 
     // Dummy load from a buffer.
-    uint data = _MeshBuffers[NonUniformResourceIndex(0U)].Load(0U);
+    uint data = 0;
+    data += _IndexBuffers[NonUniformResourceIndex(0U)].Load(0U);
+    data += _VertexBuffers[NonUniformResourceIndex(0U)].Load(0U);
 
     return float4(data.xxx, 1);
 }

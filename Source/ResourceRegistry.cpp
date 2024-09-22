@@ -51,13 +51,10 @@ void ResourceRegistry::BuildDescriptors()
         descriptorsAllocInfo.pSetLayouts        = &m_DrawItemDataDescriptorLayout;
     }
 
-    Check(vkAllocateDescriptorSets(m_RenderContext->GetDevice(), &descriptorsAllocInfo, &m_DrawItemIndexBuffersDescriptorSet),
+    Check(vkAllocateDescriptorSets(m_RenderContext->GetDevice(), &descriptorsAllocInfo, &m_DrawItemDataDescriptorSet),
           "Failed to allocate indexed resource descriptor sets.");
 
-    Check(vkAllocateDescriptorSets(m_RenderContext->GetDevice(), &descriptorsAllocInfo, &m_DrawItemVertexBuffersDescriptorSet),
-          "Failed to allocate indexed resource descriptor sets.");
-
-    auto WriteDrawItemBuffer = [&](VkDescriptorSet dstSet, uint32_t dstIndex, VkBuffer buffer)
+    auto WriteDrawItemBufferDescriptor = [&](uint32_t dstBinding, uint32_t dstIndex, VkBuffer buffer)
     {
         VkDescriptorBufferInfo bufferInfo {};
         {
@@ -69,7 +66,8 @@ void ResourceRegistry::BuildDescriptors()
         {
             descriptorWrite.descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
             descriptorWrite.descriptorCount = 1U;
-            descriptorWrite.dstSet          = dstSet;
+            descriptorWrite.dstSet          = m_DrawItemDataDescriptorSet;
+            descriptorWrite.dstBinding      = dstBinding;
             descriptorWrite.dstArrayElement = dstIndex;
             descriptorWrite.pBufferInfo     = &bufferInfo;
         }
@@ -80,8 +78,8 @@ void ResourceRegistry::BuildDescriptors()
     {
         auto& drawItem = m_DrawItems[drawItemIndex];
 
-        WriteDrawItemBuffer(m_DrawItemIndexBuffersDescriptorSet, drawItemIndex, drawItem.bufferI.buffer);
-        WriteDrawItemBuffer(m_DrawItemVertexBuffersDescriptorSet, drawItemIndex, drawItem.bufferV.buffer);
+        WriteDrawItemBufferDescriptor(0U, drawItemIndex, drawItem.bufferI.buffer);
+        WriteDrawItemBufferDescriptor(1U, drawItemIndex, drawItem.bufferV.buffer);
     }
 
     spdlog::info("Created draw item buffer descriptors.");

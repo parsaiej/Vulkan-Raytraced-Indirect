@@ -214,7 +214,7 @@ void RenderPass::DebugPassCreate(RenderContext* pRenderContext)
     std::vector<VkDescriptorSetLayout> debugPipelineSetLayouts;
     {
         debugPipelineSetLayouts.push_back(m_DebugDescriptorSetLayout);
-        // debugPipelineSetLayouts.push_back(pResourceRegistry->GetResourceDescriptorLayout());
+        debugPipelineSetLayouts.push_back(pResourceRegistry->GetDrawItemDataDescriptorLayout());
     }
 
     // Pipeline Layout
@@ -523,14 +523,14 @@ void RenderPass::DebugPassExecute(FrameContext* pFrameContext)
     // For the second descriptor set, we use traditional descriptors that are pre-created during the alst resource registry update.
     // We bind this set to the second slot.
     {
-        // vkCmdBindDescriptorSets(pFrameContext->pFrame->cmd,
-        //                         VK_PIPELINE_BIND_POINT_GRAPHICS,
-        //                         m_DebugPipelineLayout,
-        //                         1U,
-        //                         1U,
-        //                         &pFrameContext->pResourceRegistry->GetResourceDescriptorSet(),
-        //                         0U,
-        //                         nullptr);
+        vkCmdBindDescriptorSets(pFrameContext->pFrame->cmd,
+                                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                m_DebugPipelineLayout,
+                                1U,
+                                1U,
+                                &pFrameContext->pResourceRegistry->GetDrawItemDataDescriptorSet(),
+                                0U,
+                                nullptr);
     }
 
     BindGraphicsShaders(pFrameContext->pFrame->cmd, m_ShaderMap[ShaderID::DebugVert], m_ShaderMap[ShaderID::DebugFrag]);
