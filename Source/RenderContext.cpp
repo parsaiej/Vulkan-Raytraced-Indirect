@@ -227,6 +227,14 @@ RenderContext::RenderContext(uint32_t width, uint32_t height)
 
     InitializeUserInterface(this);
 
+    // Emit warning in case forgot to add Superluminal DLL.
+    // ------------------------------------------------
+
+#ifdef USE_SUPERLUMINAL
+    if (!std::filesystem::exists("PerformanceAPI.dll"))
+        spdlog::warn("PerformanceAPI.dll was not found in the working directory. Sample instrumentation will not work in Superluminal.");
+#endif
+
     // Done.
     // ------------------------------------------------
 
