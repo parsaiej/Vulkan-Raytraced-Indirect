@@ -3,70 +3,88 @@
 #include <RenderContext.h>
 #include <ResourceRegistry.h>
 
-ResourceRegistry::ResourceRegistry(RenderContext* pRenderContext) : m_RenderContext(pRenderContext), m_HostBufferPoolI(), m_HostBufferPoolV()
+ResourceRegistry::ResourceRegistry(RenderContext* pRenderContext) :
+    m_RenderContext(pRenderContext), m_DrawItemDataDescriptorLayout(VK_NULL_HANDLE), m_HostBufferPoolI(), m_HostBufferPoolV()
 {
     // Reset pool sizes.
     m_HostBufferPoolSizeI.store(0LL);
     m_HostBufferPoolSizeV.store(0LL);
 
     m_CommitTaskBusy.store(false);
-}
 
-//
-// ---------------------------------------------------------
+    // Create a descriptor set layout defining resource arrays for draw items.
+    // --------------------------------------------
 
-thread_local Buffer s_ThreadLocalScratchBuffer {}; // NOLINT
+    std::vector<VkDescriptorBindingFlags> bindingFlags(2U, VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT_EXT);
 
-std::array<Buffer, 8U> s_PerThreadScratchBuffer;
-
-#include <fmt/ostream.h>
-
-void CreateThreadLocalScratchBuffer(RenderContext* pRenderContext)
-{
-    // spdlog::debug("Creating staging upload memory for thread [{}]", fmt::streamed(tbb::this_tbb_thread::get_id()));
-
-    // WARNING: Each task thread gets 128mb of scratch upload memory.
-    pRenderContext->CreateStagingBuffer(128LL * 1024 * 1024, &s_ThreadLocalScratchBuffer);
-}
-
-void ReleaseThreadLocalScratchBuffer(RenderContext* pRenderContext)
-{
-    vmaDestroyBuffer(pRenderContext->GetAllocator(), s_ThreadLocalScratchBuffer.buffer, s_ThreadLocalScratchBuffer.bufferAllocation);
-}
-
-//
-// ---------------------------------------------------------
-
-void ProcessDrawItemRequest(RenderContext* pRenderContext, Buffer& stagingBuffer, const DrawItemRequest& request)
-{
-    // Initialize the device buffer upload info.
-    RenderContext::CreateDeviceBufferWithDataParams createInfo {};
+    VkDescriptorSetLayoutBindingFlagsCreateInfo descriptorSetFlags { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO_EXT };
     {
-        createInfo.pBufferStaging = &stagingBuffer;
-
-        // Obtain a thread-local command pool for submission work on this thread.
-        // createInfo.commandPool = pRenderContext->GetThreadLocalCommandPool();
+        descriptorSetFlags.bindingCount  = static_cast<uint32_t>(bindingFlags.size());
+        descriptorSetFlags.pBindingFlags = bindingFlags.data();
     }
 
-    // Create vertex buffer.
-    Buffer deviceBufferV;
+    std::vector<VkDescriptorSetLayoutBinding> bindings;
     {
-        createInfo.pData         = request.pVertexBufferHost;
-        createInfo.size          = request.vertexBufferSize;
-        createInfo.pBufferDevice = &deviceBufferV;
-        createInfo.usage         = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-        pRenderContext->CreateDeviceBufferWithData(createInfo);
+        // Binding 0: Index Buffers
+        bindings.push_back(VkDescriptorSetLayoutBinding(0U, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4096U, VK_SHADER_STAGE_FRAGMENT_BIT, VK_NULL_HANDLE));
+
+        // Binding 1: Vertex Buffers
+        bindings.push_back(VkDescriptorSetLayoutBinding(1U, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4096U, VK_SHADER_STAGE_FRAGMENT_BIT, VK_NULL_HANDLE));
     }
 
-    // Create index buffer.
-    Buffer deviceBufferI;
+    VkDescriptorSetLayoutCreateInfo descriptorSetLayoutInfo { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
     {
-        createInfo.pData         = request.pIndexBufferHost;
-        createInfo.size          = request.indexBufferSize;
-        createInfo.pBufferDevice = &deviceBufferI;
-        createInfo.usage         = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-        pRenderContext->CreateDeviceBufferWithData(createInfo);
+        descriptorSetLayoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
+        descriptorSetLayoutInfo.pBindings    = bindings.data();
+        descriptorSetLayoutInfo.pNext        = &descriptorSetFlags;
     }
+    Check(vkCreateDescriptorSetLayout(pRenderContext->GetDevice(), &descriptorSetLayoutInfo, nullptr, &m_DrawItemDataDescriptorLayout),
+          "Failed to create descriptor set layout for resource registry.");
+}
+
+void ResourceRegistry::BuildDescriptors()
+{
+    VkDescriptorSetAllocateInfo descriptorsAllocInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
+    {
+        descriptorsAllocInfo.descriptorSetCount = 1U;
+        descriptorsAllocInfo.descriptorPool     = m_RenderContext->GetDescriptorPool();
+        descriptorsAllocInfo.pSetLayouts        = &m_DrawItemDataDescriptorLayout;
+    }
+
+    Check(vkAllocateDescriptorSets(m_RenderContext->GetDevice(), &descriptorsAllocInfo, &m_DrawItemIndexBuffersDescriptorSet),
+          "Failed to allocate indexed resource descriptor sets.");
+
+    Check(vkAllocateDescriptorSets(m_RenderContext->GetDevice(), &descriptorsAllocInfo, &m_DrawItemVertexBuffersDescriptorSet),
+          "Failed to allocate indexed resource descriptor sets.");
+
+    auto WriteDrawItemBuffer = [&](VkDescriptorSet dstSet, uint32_t dstIndex, VkBuffer buffer)
+    {
+        VkDescriptorBufferInfo bufferInfo {};
+        {
+            bufferInfo.buffer = buffer;
+            bufferInfo.range  = VK_WHOLE_SIZE;
+        }
+
+        VkWriteDescriptorSet descriptorWrite { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+        {
+            descriptorWrite.descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            descriptorWrite.descriptorCount = 1U;
+            descriptorWrite.dstSet          = dstSet;
+            descriptorWrite.dstArrayElement = dstIndex;
+            descriptorWrite.pBufferInfo     = &bufferInfo;
+        }
+        vkUpdateDescriptorSets(m_RenderContext->GetDevice(), 1U, &descriptorWrite, 0U, nullptr);
+    };
+
+    for (uint32_t drawItemIndex = 0U; drawItemIndex < m_DrawItems.size(); drawItemIndex++)
+    {
+        auto& drawItem = m_DrawItems[drawItemIndex];
+
+        WriteDrawItemBuffer(m_DrawItemIndexBuffersDescriptorSet, drawItemIndex, drawItem.bufferI.buffer);
+        WriteDrawItemBuffer(m_DrawItemVertexBuffersDescriptorSet, drawItemIndex, drawItem.bufferV.buffer);
+    }
+
+    spdlog::info("Created draw item buffer descriptors.");
 }
 
 void ResourceRegistry::_Commit()
@@ -99,12 +117,15 @@ void ResourceRegistry::_Commit()
             // Reset the draw items list (Warning: will leak VRAM currently).
             m_DrawItems.clear();
 
+            auto requestCount = static_cast<uint32_t>(m_DrawItemRequests.size());
+            auto requestIndex = 0U;
+
             // Clear the requests.
             while (!m_DrawItemRequests.empty())
             {
                 auto request = m_DrawItemRequests.front();
 
-                spdlog::info("Processing draw item request...");
+                spdlog::info("Upload GPU Mesh ----> [{} / {}]", requestIndex++, requestCount);
 
                 DrawItem drawItem;
 
@@ -142,6 +163,9 @@ void ResourceRegistry::_Commit()
             // Free the scratch memory.
             vmaDestroyBuffer(m_RenderContext->GetAllocator(), stagingBuffer.buffer, stagingBuffer.bufferAllocation);
 
+            // Create descriptors for the uploaded buffers.
+            BuildDescriptors();
+
             // Free the thread local command pool.
             vkDestroyCommandPool(m_RenderContext->GetDevice(), createInfo.commandPool, nullptr);
 
@@ -155,6 +179,8 @@ void ResourceRegistry::_Commit()
 void ResourceRegistry::_GarbageCollect()
 {
     vkDeviceWaitIdle(m_RenderContext->GetDevice());
+
+    vkDestroyDescriptorSetLayout(m_RenderContext->GetDevice(), m_DrawItemDataDescriptorLayout, nullptr);
 
     for (auto& drawItem : m_DrawItems)
     {

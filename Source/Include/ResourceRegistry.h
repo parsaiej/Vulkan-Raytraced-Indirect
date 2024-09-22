@@ -49,6 +49,8 @@ protected:
 
 private:
 
+    void BuildDescriptors();
+
     std::mutex m_MeshAllocationMutex;
 
     RenderContext* m_RenderContext;
@@ -57,8 +59,13 @@ private:
     tbb::task_group   m_CommitTask;
 
     std::queue<DrawItemRequest> m_DrawItemRequests;
+    std::vector<DrawItem>       m_DrawItems;
 
-    std::vector<DrawItem> m_DrawItems;
+    // Using VK_EXT_descriptor_indexing to bind all resource arrays to PSO.
+    VkDescriptorSetLayout m_DrawItemDataDescriptorLayout;
+
+    VkDescriptorSet m_DrawItemIndexBuffersDescriptorSet;
+    VkDescriptorSet m_DrawItemVertexBuffersDescriptorSet;
 
     std::atomic<uint64_t> m_HostBufferPoolSizeI;
     std::atomic<uint64_t> m_HostBufferPoolSizeV;

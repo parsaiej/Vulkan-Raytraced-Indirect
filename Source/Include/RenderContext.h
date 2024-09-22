@@ -80,6 +80,12 @@ private:
     std::vector<VkImage>     m_VKSwapchainImages;
     std::vector<VkImageView> m_VKSwapchainImageViews;
 
+    // Using VK_EXT_descriptor_indexing to bind all resource arrays to PSO.
+    VkDescriptorSetLayout m_DrawItemsDescriptorSetLayout;
+
+    VkDescriptorSet m_DrawItemVertexBuffersDescriptor;
+    VkDescriptorSet m_DrawItemIndexBuffersDescriptor;
+
     // Frame Primitives
     std::array<VkCommandBuffer, kMaxFramesInFlight> m_VKCommandBuffers {};
     std::array<VkSemaphore, kMaxFramesInFlight>     m_VKImageAvailableSemaphores {};
