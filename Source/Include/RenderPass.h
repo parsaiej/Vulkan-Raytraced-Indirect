@@ -24,8 +24,9 @@ struct VisibilityPushConstants
 
 struct DebugPushConstants
 {
-    uint32_t DebugModeValue;
-    uint32_t MeshCount;
+    GfMatrix4f MatrixVP;
+    uint32_t   DebugModeValue;
+    uint32_t   MeshCount;
 };
 
 class RenderPass final : public HdRenderPass

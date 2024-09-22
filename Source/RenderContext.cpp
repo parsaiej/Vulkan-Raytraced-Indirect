@@ -36,7 +36,7 @@ RenderContext::RenderContext(uint32_t width, uint32_t height)
     for (uint32_t windowExtensionIndex = 0U; windowExtensionIndex < windowExtensionCount; windowExtensionIndex++)
         requiredInstanceExtensions.push_back(pWindowExtensions[windowExtensionIndex]); // NOLINT
 
-#ifdef _DEBUG
+#ifdef USE_VK_LABELS
     requiredInstanceExtensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 #endif
 
@@ -116,13 +116,11 @@ RenderContext::RenderContext(uint32_t width, uint32_t height)
     Check(vkGetSwapchainImagesKHR(m_VKDeviceLogical, m_VKSwapchain, &vkSwapchainImageCount, m_VKSwapchainImages.data()),
           "Failed to obtain the Vulkan Swapchain images.");
 
-#ifdef _DEBUG
     for (uint32_t swapChainIndex = 0U; swapChainIndex < vkSwapchainImageCount; swapChainIndex++)
     {
         auto swapChainName = std::format("Swapchain Image {}", swapChainIndex);
         NameVulkanObject(m_VKDeviceLogical, VK_OBJECT_TYPE_IMAGE, reinterpret_cast<uint64_t>(m_VKSwapchainImages[swapChainIndex]), swapChainName);
     }
-#endif
 
     VkImageSubresourceRange vkSwapchainImageSubresourceRange;
     {

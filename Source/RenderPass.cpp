@@ -476,6 +476,8 @@ void RenderPass::DebugPassExecute(FrameContext* pFrameContext)
 
     SetDefaultRenderState(pFrameContext->pFrame->cmd);
 
+    m_DebugPushConstants.MatrixVP =
+        GfMatrix4f(pFrameContext->pPassState->GetWorldToViewMatrix()) * GfMatrix4f(pFrameContext->pPassState->GetProjectionMatrix());
     m_DebugPushConstants.DebugModeValue = static_cast<uint32_t>(pFrameContext->debugMode);
     m_DebugPushConstants.MeshCount      = static_cast<uint32_t>(pFrameContext->pResourceRegistry->GetDrawItems().size());
 

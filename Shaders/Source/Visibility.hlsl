@@ -13,7 +13,7 @@ struct VertexInput
 
 float4 Vert(VertexInput input) : SV_Position
 {
-    return mul(gConstants._MatrixMVP, float4(input.positionOS, 1.0));;
+    return mul(gConstants._MatrixMVP, float4(input.positionOS, 1.0));
 }
 
 uint Frag(uint primitiveID : SV_PrimitiveID) : SV_Target

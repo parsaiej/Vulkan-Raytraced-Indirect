@@ -17,6 +17,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # --------------------------------
 
 option(USE_SUPERLUMINAL "" ON)
+option(USE_VK_LABELS "" ON)
 
 # Check for the USD Installation Environment variable
 # --------------------------------
@@ -144,6 +145,10 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
 
 if (${USE_SUPERLUMINAL})
     target_compile_definitions(${PROJECT_NAME} PRIVATE USE_SUPERLUMINAL)
+endif()
+
+if (${USE_VK_LABELS})
+    target_compile_definitions(${PROJECT_NAME} PRIVATE USE_VK_LABELS)
 endif()
 
 # LivePP Configuration

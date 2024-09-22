@@ -163,8 +163,16 @@ void ResourceRegistry::_Commit()
                 // Push the draw item.
                 m_DrawItems.push_back(drawItem);
 
+                DebugLabelBufferResource(m_RenderContext, drawItem.bufferI, "IndexBuffer");
+                DebugLabelBufferResource(m_RenderContext, drawItem.bufferV, "VertexBuffer");
+
                 // Push the gpu meta-data about the draw item.
-                drawItemMetaData.push_back({ drawItem.indexCount / 3U, 0U });
+                DrawItemMetaData metaData {};
+                {
+                    metaData.matrix    = drawItem.pMesh->GetLocalToWorld();
+                    metaData.faceCount = drawItem.indexCount / 3U;
+                }
+                drawItemMetaData.push_back(metaData);
 
                 // Request processed, remove.
                 m_DrawItemRequests.pop();
@@ -178,6 +186,8 @@ void ResourceRegistry::_Commit()
                 createInfo.usage         = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
                 m_RenderContext->CreateDeviceBufferWithData(createInfo);
             }
+
+            DebugLabelBufferResource(m_RenderContext, m_DrawItemMetaDataBuffer, "DrawItemMetaDataBuffer");
 
             // Free the scratch memory.
             vmaDestroyBuffer(m_RenderContext->GetAllocator(), stagingBuffer.buffer, stagingBuffer.bufferAllocation);

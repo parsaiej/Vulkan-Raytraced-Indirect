@@ -19,8 +19,10 @@ struct DrawItem
 
 struct DrawItemMetaData
 {
-    uint32_t faceCount;
-    uint32_t materialIndex;
+    GfMatrix4f matrix;
+    uint32_t   faceCount;
+    uint32_t   materialIndex;
+    GfVec2i    unused;
 };
 
 struct DrawItemRequest

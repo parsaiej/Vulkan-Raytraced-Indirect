@@ -358,7 +358,7 @@ bool GetVulkanQueueIndices(const VkInstance& vkInstance, const VkPhysicalDevice&
 
 void NameVulkanObject(VkDevice vkLogicalDevice, VkObjectType vkObjectType, uint64_t vkObject, const std::string& vkObjectName)
 {
-#ifdef _DEBUG
+#ifdef USE_VK_LABELS
     VkDebugUtilsObjectNameInfoEXT attachmentNameInfo = { VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT };
 
     attachmentNameInfo.pObjectName  = vkObjectName.c_str();
@@ -403,7 +403,7 @@ void VulkanColorImageBarrier(VkCommandBuffer       vkCommand,
 
 void DebugLabelImageResource(RenderContext* pRenderContext, const Image& imageResource, const char* labelName)
 {
-#ifdef _DEBUG
+#ifdef USE_VK_LABELS
     // Label the allocation.
     vmaSetAllocationName(pRenderContext->GetAllocator(), imageResource.imageAllocation, std::format("Image Alloc - [{}]", labelName).c_str());
 
@@ -426,7 +426,7 @@ void DebugLabelImageResource(RenderContext* pRenderContext, const Image& imageRe
 
 void DebugLabelBufferResource(RenderContext* pRenderContext, const Buffer& bufferResource, const char* labelName)
 {
-#ifdef _DEBUG
+#ifdef USE_VK_LABELS
     // Label the allocation.
     vmaSetAllocationName(pRenderContext->GetAllocator(), bufferResource.bufferAllocation, std::format("Buffer Alloc - [{}]", labelName).c_str());
 
