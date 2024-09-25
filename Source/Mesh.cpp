@@ -58,15 +58,17 @@ void Mesh::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParams, H
     uint64_t sizeBytesI = sizeof(GfVec3i) * triangles.size();
     uint64_t sizeBytesV = sizeof(GfVec3f) * pPoints.size();
 
-    void* pVertexBuffer = nullptr;
-    void* pIndexBuffer  = nullptr;
-
     // Fetch the allocation needed.
-    pResourceRegistry->AddMesh(this, sizeBytesI, sizeBytesV, &pIndexBuffer, &pVertexBuffer);
+    DrawItemRequest request { this };
+    {
+        request.indexBufferSize  = sizeBytesI;
+        request.vertexBufferSize = sizeBytesV;
+    }
+    pResourceRegistry->PushDrawItemRequest(request);
 
     // Copy into the pool.
-    memcpy(pVertexBuffer, pPoints.data(), sizeBytesV);
-    memcpy(pIndexBuffer, triangles.data(), sizeBytesI);
+    memcpy(request.pVertexBufferHost, pPoints.data(), sizeBytesV);
+    memcpy(request.pIndexBufferHost, triangles.data(), sizeBytesI);
 
     spdlog::info("Pre-processed Mesh: {}", GetId().GetText());
 

@@ -3,19 +3,14 @@
 #include <RenderContext.h>
 #include <ResourceRegistry.h>
 
-ResourceRegistry::ResourceRegistry(RenderContext* pRenderContext) :
-    m_RenderContext(pRenderContext), m_DrawItemDataDescriptorLayout(VK_NULL_HANDLE), m_HostBufferPoolI(), m_HostBufferPoolV()
+#include <cstddef>
+
+void CreateDrawItemDescriptorLayout(RenderContext* pRenderContext, VkDescriptorSetLayout& descriptorLayout)
 {
-    // Reset pool sizes.
-    m_HostBufferPoolSizeI.store(0LL);
-    m_HostBufferPoolSizeV.store(0LL);
+    std::vector<VkDescriptorBindingFlags> bindingFlags(2U, VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT_EXT);
 
-    m_CommitTaskBusy.store(false);
-
-    // Create a descriptor set layout defining resource arrays for draw items.
-    // --------------------------------------------
-
-    std::vector<VkDescriptorBindingFlags> bindingFlags(3U, VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT_EXT);
+    // The last binding is fully bound / normal.
+    bindingFlags.push_back(0x0);
 
     VkDescriptorSetLayoutBindingFlagsCreateInfo descriptorSetFlags { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO_EXT };
     {
@@ -41,8 +36,49 @@ ResourceRegistry::ResourceRegistry(RenderContext* pRenderContext) :
         descriptorSetLayoutInfo.pBindings    = bindings.data();
         descriptorSetLayoutInfo.pNext        = &descriptorSetFlags;
     }
-    Check(vkCreateDescriptorSetLayout(pRenderContext->GetDevice(), &descriptorSetLayoutInfo, nullptr, &m_DrawItemDataDescriptorLayout),
+    Check(vkCreateDescriptorSetLayout(pRenderContext->GetDevice(), &descriptorSetLayoutInfo, nullptr, &descriptorLayout),
           "Failed to create descriptor set layout for resource registry.");
+}
+
+void CreateMaterialDataDescriptorLayout(RenderContext* pRenderContext, VkDescriptorSetLayout& descriptorLayout)
+{
+    std::vector<VkDescriptorBindingFlags> bindingFlags(1U, VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT_EXT);
+
+    VkDescriptorSetLayoutBindingFlagsCreateInfo descriptorSetFlags { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO_EXT };
+    {
+        descriptorSetFlags.bindingCount  = static_cast<uint32_t>(bindingFlags.size());
+        descriptorSetFlags.pBindingFlags = bindingFlags.data();
+    }
+
+    std::vector<VkDescriptorSetLayoutBinding> bindings;
+    {
+        // Binding 0: Albedo Images
+        bindings.push_back(VkDescriptorSetLayoutBinding(0U, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 4096U, VK_SHADER_STAGE_FRAGMENT_BIT, VK_NULL_HANDLE));
+    }
+
+    VkDescriptorSetLayoutCreateInfo descriptorSetLayoutInfo { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+    {
+        descriptorSetLayoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
+        descriptorSetLayoutInfo.pBindings    = bindings.data();
+        descriptorSetLayoutInfo.pNext        = &descriptorSetFlags;
+    }
+    Check(vkCreateDescriptorSetLayout(pRenderContext->GetDevice(), &descriptorSetLayoutInfo, nullptr, &descriptorLayout),
+          "Failed to create descriptor set layout for resource registry.");
+}
+
+ResourceRegistry::ResourceRegistry(RenderContext* pRenderContext) :
+    m_RenderContext(pRenderContext), m_DrawItemDataDescriptorLayout(VK_NULL_HANDLE), m_DrawItemDataDescriptorSet(VK_NULL_HANDLE),
+    m_MaterialDataDescriptorLayout(VK_NULL_HANDLE), m_MaterialDataDescriptorSet(VK_NULL_HANDLE), m_HostBufferPoolSize(0LL), m_HostImagePoolSize(0LL)
+{
+    // Create descriptor set layouts.
+    CreateDrawItemDescriptorLayout(m_RenderContext, m_DrawItemDataDescriptorLayout);
+    CreateMaterialDataDescriptorLayout(m_RenderContext, m_MaterialDataDescriptorLayout);
+
+    // Reserve pool memory.
+    m_HostBufferPool.resize(kHostBufferPoolMaxBytes);
+    m_HostImagePool.resize(kHostImagePoolMaxBytes);
+
+    m_CommitTaskBusy.store(false);
 }
 
 void ResourceRegistry::BuildDescriptors()
@@ -198,6 +234,18 @@ void ResourceRegistry::_Commit()
             // Free the thread local command pool.
             vkDestroyCommandPool(m_RenderContext->GetDevice(), createInfo.commandPool, nullptr);
 
+            // Free host memory for buffer and image pools.
+            {
+                m_HostBufferPool.clear();
+                m_HostBufferPool.shrink_to_fit();
+
+                m_HostImagePool.clear();
+                m_HostImagePool.shrink_to_fit();
+
+                m_HostBufferPoolSize = 0LL;
+                m_HostImagePoolSize  = 0LL;
+            }
+
             spdlog::info("Graphics resource upload complete.");
 
             // Idle.
@@ -210,6 +258,7 @@ void ResourceRegistry::_GarbageCollect()
     vkDeviceWaitIdle(m_RenderContext->GetDevice());
 
     vkDestroyDescriptorSetLayout(m_RenderContext->GetDevice(), m_DrawItemDataDescriptorLayout, nullptr);
+    vkDestroyDescriptorSetLayout(m_RenderContext->GetDevice(), m_MaterialDataDescriptorLayout, nullptr);
 
     vmaDestroyBuffer(m_RenderContext->GetAllocator(), m_DrawItemMetaDataBuffer.buffer, m_DrawItemMetaDataBuffer.bufferAllocation);
 
@@ -222,16 +271,33 @@ void ResourceRegistry::_GarbageCollect()
 
 // ------------------------------------------------
 
-void ResourceRegistry::AddMesh(Mesh* pMesh, uint64_t bufferSizeI, uint64_t bufferSizeV, void** ppBufferI, void** ppBufferV)
+void ResourceRegistry::PushDrawItemRequest(DrawItemRequest& request)
 {
-    std::lock_guard<std::mutex> lock(m_MeshAllocationMutex);
+    std::lock_guard<std::mutex> lock(m_HostBufferPoolMutex);
 
-    auto bufferSizeIPrev = m_HostBufferPoolSizeI.fetch_add(bufferSizeI);
-    auto bufferSizeVPrev = m_HostBufferPoolSizeV.fetch_add(bufferSizeV);
+    auto bufferSizeIPrev = m_HostBufferPoolSize;
+    m_HostBufferPoolSize += request.indexBufferSize;
 
-    *ppBufferI = reinterpret_cast<void*>(&m_HostBufferPoolI.at(bufferSizeIPrev));
-    *ppBufferV = reinterpret_cast<void*>(&m_HostBufferPoolV.at(bufferSizeVPrev));
+    auto bufferSizeVPrev = m_HostBufferPoolSize;
+    m_HostBufferPoolSize += request.vertexBufferSize;
+
+    // Map a pointer back in the pool that the client can fill with data.
+    request.pIndexBufferHost  = reinterpret_cast<void*>(&m_HostBufferPool.at(bufferSizeIPrev));
+    request.pVertexBufferHost = reinterpret_cast<void*>(&m_HostBufferPool.at(bufferSizeVPrev));
 
     // Push the request.
-    m_DrawItemRequests.push({ pMesh, *ppBufferI, bufferSizeI, *ppBufferV, bufferSizeV });
+    m_DrawItemRequests.push(request);
+}
+
+void ResourceRegistry::PushMaterialRequest(MaterialRequest& request)
+{
+    std::lock_guard<std::mutex> lock(m_HostImagePoolMutex);
+
+    auto imageSizeAlbedoPrev = m_HostImagePoolSize;
+    m_HostImagePoolSize += static_cast<uint64_t>(request.albedo.stride * request.albedo.dim[0]) * request.albedo.dim[1];
+
+    // Map a pointer back in the pool that the client can fill with data.
+    request.albedo.data = reinterpret_cast<void*>(&m_HostImagePool.at(imageSizeAlbedoPrev));
+
+    m_MaterialRequests.push(request);
 }

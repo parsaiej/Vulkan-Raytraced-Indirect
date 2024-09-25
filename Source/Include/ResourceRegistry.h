@@ -25,6 +25,14 @@ struct DrawItemMetaData
     GfVec2i    unused;
 };
 
+struct ImageData
+{
+    void*    data;
+    uint32_t stride;
+    GfVec2i  dim;
+    VkFormat format;
+};
+
 struct DrawItemRequest
 {
     Mesh* pMesh;
@@ -36,6 +44,13 @@ struct DrawItemRequest
     size_t vertexBufferSize;
 };
 
+struct MaterialRequest
+{
+    Material* pMaterial;
+
+    ImageData albedo;
+};
+
 class ResourceRegistry : public HdResourceRegistry
 {
 public:
@@ -44,14 +59,17 @@ public:
 
     ~ResourceRegistry() noexcept override {};
 
-    // Maps a pointer to the allocated memory chunk for the mesh to copy to.
-    void AddMesh(Mesh* pMesh, uint64_t bufferSizeI, uint64_t bufferSizeV, void** ppBufferI, void** ppBufferV);
+    void PushDrawItemRequest(DrawItemRequest& request);
+    void PushMaterialRequest(MaterialRequest& request);
 
     inline const std::vector<DrawItem>& GetDrawItems() { return m_DrawItems; }
     inline bool                         IsBusy() { return m_CommitTaskBusy.load(); }
 
     inline const VkDescriptorSetLayout& GetDrawItemDataDescriptorLayout() { return m_DrawItemDataDescriptorLayout; }
     inline const VkDescriptorSet&       GetDrawItemDataDescriptorSet() { return m_DrawItemDataDescriptorSet; }
+
+    inline const VkDescriptorSetLayout& GetMaterialDataDescriptorLayout() { return m_MaterialDataDescriptorLayout; }
+    inline const VkDescriptorSet&       GetMaterialDataDescriptorSet() { return m_MaterialDataDescriptorSet; }
 
 protected:
 
@@ -62,8 +80,6 @@ private:
 
     void BuildDescriptors();
 
-    std::mutex m_MeshAllocationMutex;
-
     RenderContext* m_RenderContext;
 
     std::atomic<bool> m_CommitTaskBusy;
@@ -72,17 +88,24 @@ private:
     std::queue<DrawItemRequest> m_DrawItemRequests;
     std::vector<DrawItem>       m_DrawItems;
 
+    std::queue<MaterialRequest> m_MaterialRequests;
+
     Buffer m_DrawItemMetaDataBuffer;
 
     // Using VK_EXT_descriptor_indexing to bind all resource arrays to PSO.
     VkDescriptorSetLayout m_DrawItemDataDescriptorLayout;
     VkDescriptorSet       m_DrawItemDataDescriptorSet;
 
-    std::atomic<uint64_t> m_HostBufferPoolSizeI;
-    std::atomic<uint64_t> m_HostBufferPoolSizeV;
+    VkDescriptorSetLayout m_MaterialDataDescriptorLayout;
+    VkDescriptorSet       m_MaterialDataDescriptorSet;
 
-    std::array<char8_t, kIndicesPoolMaxBytes>  m_HostBufferPoolI;
-    std::array<char8_t, kVerticesPoolMaxBytes> m_HostBufferPoolV;
+    std::mutex           m_HostBufferPoolMutex;
+    uint64_t             m_HostBufferPoolSize;
+    std::vector<char8_t> m_HostBufferPool;
+
+    std::mutex           m_HostImagePoolMutex;
+    uint64_t             m_HostImagePoolSize;
+    std::vector<char8_t> m_HostImagePool;
 };
 
 #endif

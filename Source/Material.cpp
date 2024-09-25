@@ -11,6 +11,8 @@
 #include <MaterialXGenGlsl/VkShaderGenerator.h>
 #include <MaterialXGenShader/Shader.h>
 
+#include <cstddef>
+
 // #define MATERIAL_DEBUG_PRINT_NETWORK
 
 HdDirtyBits Material::GetInitialDirtyBitsMask() const { return HdChangeTracker::AllSceneDirtyBits; }
@@ -100,6 +102,72 @@ void ReconstructMaterialXDocument(HdMaterialNetwork2* pNetwork, const SdfPath& r
 
 #endif
 
+class ImageLoader
+{
+public:
+
+    explicit ImageLoader(const SdfAssetPath& imagePath) : m_Format(VK_FORMAT_UNDEFINED)
+    {
+        if (std::filesystem::path(imagePath.GetResolvedPath()).extension().string() == ".dds")
+        {
+            Check(dds::readFile(imagePath.GetResolvedPath(), &m_DDSImage) == 0U, "Failed to load DDS image to memory.");
+
+            // Read out the image data.
+            m_Width  = static_cast<int>(m_DDSImage.width);
+            m_Height = static_cast<int>(m_DDSImage.height);
+
+            m_BytesPerPixel = dds::getBitsPerPixel(m_DDSImage.format) >> 3U;
+
+            // Extract pointer to image data.
+            m_Data = m_DDSImage.mipmaps.front().data();
+
+            // Extract the format.
+            m_Format = dds::getVulkanFormat(m_DDSImage.format, m_DDSImage.supportsAlpha);
+
+            // We did not load with STB.
+            m_IsSTB = false;
+        }
+        else
+        {
+            int channels = 0;
+            m_Data       = stbi_load(imagePath.GetResolvedPath().c_str(), &m_Width, &m_Height, &channels, 0U);
+
+            if (channels != 4U)
+                InterleaveImageAlpha(reinterpret_cast<stbi_uc**>(&m_Data), m_Width, m_Height, channels);
+
+            // Hardcode for now...
+            m_Format = VK_FORMAT_R8G8B8A8_SRGB;
+
+            // The hardcoded format is 4-bytes per pixel.
+            m_BytesPerPixel = 4U;
+
+            // Need to make sure we free the memory in case of STB.
+            m_IsSTB = true;
+        }
+    }
+
+    ~ImageLoader()
+    {
+        if (m_Data != nullptr && m_IsSTB)
+            stbi_image_free(m_Data);
+    }
+
+    [[nodiscard]] inline const void*     GetData() const { return m_Data; }
+    [[nodiscard]] inline GfVec2i         GetDim() const { return { m_Width, m_Height }; }
+    [[nodiscard]] inline const VkFormat& GetFormat() const { return m_Format; }
+    [[nodiscard]] inline const uint32_t& GetStride() const { return m_BytesPerPixel; }
+
+private:
+
+    VkFormat   m_Format {};
+    uint32_t   m_BytesPerPixel {};
+    void*      m_Data {};
+    int        m_Width {};
+    int        m_Height {};
+    bool       m_IsSTB {};
+    dds::Image m_DDSImage {};
+};
+
 void Material::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParam, HdDirtyBits* pDirtyBits)
 {
     if ((*pDirtyBits & HdChangeTracker::AllSceneDirtyBits) == 0U)
@@ -137,17 +205,23 @@ void Material::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParam
 
     // Obtain the resource registry + push the material request.
     auto pResourceRegistry = std::static_pointer_cast<ResourceRegistry>(pSceneDelegate->GetRenderIndex().GetResourceRegistry());
-    {
-        //        m_ResourceHandle = pResourceRegistry->PushMaterialRequest(
-        //            { id,
-        //              TryGetSingleParameterForInput<SdfAssetPath>(kMaterialInputBaseColor, &network, &rootNode->second),
-        //              TryGetSingleParameterForInput<SdfAssetPath>(kMaterialInputNormal, &network, &rootNode->second),
-        //              TryGetSingleParameterForInput<SdfAssetPath>(kMaterialInputRoughness, &network, &rootNode->second),
-        //              TryGetSingleParameterForInput<SdfAssetPath>(kMaterialInputMetallic, &network, &rootNode->second) });
-    }
 
-        // Clear the dirty bits.
-        * pDirtyBits &= ~HdChangeTracker::AllSceneDirtyBits;
+    // Load images.
+    ImageLoader albedo(TryGetSingleParameterForInput<SdfAssetPath>(kMaterialInputBaseColor, &network, &rootNode->second));
+
+    // Make a request to the image pool.
+    MaterialRequest request { this };
+    {
+        request.albedo = { nullptr, albedo.GetStride(), albedo.GetDim(), albedo.GetFormat() };
+    }
+    pResourceRegistry->PushMaterialRequest(request);
+
+    // Copy into the mapped pointers.
+    if (albedo.GetFormat() != VK_FORMAT_UNDEFINED)
+        memcpy(request.albedo.data, albedo.GetData(), static_cast<size_t>(albedo.GetStride() * albedo.GetDim()[0]) * albedo.GetDim()[1]);
+
+    // Clear the dirty bits.
+    *pDirtyBits &= ~HdChangeTracker::AllSceneDirtyBits;
 
     PROFILE_END;
 }

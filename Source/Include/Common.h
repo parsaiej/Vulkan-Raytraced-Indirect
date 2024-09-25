@@ -4,8 +4,8 @@
 // Limits
 // ---------------------------------------------------------
 
-constexpr uint64_t kIndicesPoolMaxBytes  = 512LL * 1024 * 1024;
-constexpr uint64_t kVerticesPoolMaxBytes = 512LL * 1024 * 1024;
+constexpr uint64_t kHostBufferPoolMaxBytes = 512LL * 1024 * 1024;
+constexpr uint64_t kHostImagePoolMaxBytes  = 2048LL * 1024 * 1024;
 
 // Logging + crash utility when an assertion fails.
 // ---------------------------------------------------------
