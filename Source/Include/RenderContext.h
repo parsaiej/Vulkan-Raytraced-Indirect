@@ -10,6 +10,7 @@ const uint32_t kMaxFramesInFlight = 3U;
 
 struct FrameParams;
 struct Buffer;
+struct Image;
 
 class RenderContext
 {
@@ -53,6 +54,18 @@ public:
     };
 
     void CreateDeviceBufferWithData(const CreateDeviceBufferWithDataParams& params);
+
+    struct CreateDeviceImageWithDataParams
+    {
+        void*             pData;
+        VkDeviceSize      size;
+        VkImageUsageFlags usage;
+        VkCommandPool     commandPool;
+        const Buffer*     pBufferStaging;
+        Image*            pImageStaging;
+    };
+
+    void CreateDeviceImageWithData(const CreateDeviceImageWithDataParams& params);
 
 private:
 

@@ -223,6 +223,20 @@ void ResourceRegistry::_Commit()
                 m_RenderContext->CreateDeviceBufferWithData(createInfo);
             }
 
+            requestCount = static_cast<uint32_t>(m_MaterialRequests.size());
+            requestIndex = 0U;
+
+            // Process mesh requests.
+            while (!m_MaterialRequests.empty())
+            {
+                auto request = m_DrawItemRequests.front();
+
+                spdlog::info("Upload GPU Material ----> [{} / {}]", requestIndex++, requestCount);
+
+                // Request processed, remove.
+                m_MaterialRequests.pop();
+            }
+
             DebugLabelBufferResource(m_RenderContext, m_DrawItemMetaDataBuffer, "DrawItemMetaDataBuffer");
 
             // Free the scratch memory.
