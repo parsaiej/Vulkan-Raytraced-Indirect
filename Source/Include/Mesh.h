@@ -15,6 +15,7 @@ public:
     void        Finalize(HdRenderParam* renderParam) override;
 
     inline const GfMatrix4f& GetLocalToWorld() const { return m_LocalToWorld; }
+    inline const size_t&     GetMaterialHash() const { return m_MaterialHash; }
 
 protected:
 
@@ -24,6 +25,10 @@ protected:
 private:
 
     RenderDelegate* m_Owner;
+
+    // Store the material id hash.
+    // (The parent class does not seem to).
+    size_t m_MaterialHash;
 
     GfMatrix4f m_LocalToWorld {};
 };

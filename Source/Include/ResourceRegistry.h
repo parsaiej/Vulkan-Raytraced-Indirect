@@ -19,7 +19,8 @@ struct DrawItem
 
 struct DeviceMaterial
 {
-    Image albedo;
+    size_t hash;
+    Image  albedo;
 };
 
 struct DrawItemMetaData

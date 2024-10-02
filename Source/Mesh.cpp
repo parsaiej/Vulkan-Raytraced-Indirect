@@ -74,6 +74,9 @@ void Mesh::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParams, H
 
     // TODO(parsa): Can serialize the post-processed mesh to disk to speed up future executions of the application.
 
+    // Store material binding (if any)
+    m_MaterialHash = pSceneDelegate->GetMaterialId(GetId()).GetHash();
+
     // Get the world matrix.
     m_LocalToWorld = GfMatrix4f(pSceneDelegate->GetTransform(GetId()));
 
