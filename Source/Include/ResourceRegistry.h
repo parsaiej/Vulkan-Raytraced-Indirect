@@ -17,6 +17,11 @@ struct DrawItem
     Buffer bufferV;
 };
 
+struct DeviceMaterial
+{
+    Image albedo;
+};
+
 struct DrawItemMetaData
 {
     GfMatrix4f matrix;
@@ -89,6 +94,7 @@ private:
     std::vector<DrawItem>       m_DrawItems;
 
     std::queue<MaterialRequest> m_MaterialRequests;
+    std::vector<DeviceMaterial> m_DeviceMaterials;
 
     Buffer m_DrawItemMetaDataBuffer;
 

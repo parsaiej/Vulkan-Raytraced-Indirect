@@ -451,3 +451,87 @@ void RenderContext::CreateDeviceBufferWithData(const CreateDeviceBufferWithDataP
     }
     SingleShotCommandEnd(this, vkCommand);
 }
+
+void RenderContext::CreateDeviceImageWithData(const CreateDeviceImageWithDataParams& params)
+{
+    // Create dedicate device memory for the image
+    // -----------------------------------------------------
+
+    VmaAllocationCreateInfo allocInfo = {};
+    allocInfo.usage                   = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+
+    Check(vmaCreateImage(GetAllocator(), &params.info, &allocInfo, &params.pImageDevice->image, &params.pImageDevice->imageAllocation, nullptr),
+          "Failed to create dedicated image memory.");
+
+    // Create Image View.
+    // -----------------------------------------------------
+
+    VkImageViewCreateInfo imageViewInfo = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
+    {
+        imageViewInfo.viewType         = VK_IMAGE_VIEW_TYPE_2D;
+        imageViewInfo.image            = params.pImageDevice->image;
+        imageViewInfo.format           = params.info.format;
+        imageViewInfo.components       = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A };
+        imageViewInfo.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0U, 1U, 0U, 1U };
+    }
+    Check(vkCreateImageView(GetDevice(), &imageViewInfo, nullptr, &params.pImageDevice->imageView), "Failed to create sampled image view.");
+
+    // Copy Host -> Staging Memory.
+    // -----------------------------------------------------
+
+    void* pMappedStagingMemory = nullptr;
+    Check(vmaMapMemory(GetAllocator(), params.pBufferStaging->bufferAllocation, &pMappedStagingMemory), "Failed to map a pointer to staging memory.");
+
+    // Copy the host image to staging memory.
+    memcpy(pMappedStagingMemory, params.pData, params.bytesPerTexel * params.info.extent.width * params.info.extent.height); // NOLINT
+
+    vmaUnmapMemory(GetAllocator(), params.pBufferStaging->bufferAllocation);
+
+    // Copy Staging -> Device Memory.
+    // -----------------------------------------------------
+
+    VkCommandBuffer vkCommand = VK_NULL_HANDLE;
+    SingleShotCommandBegin(this, vkCommand, params.commandPool);
+    {
+        VmaAllocationInfo allocationInfo;
+        vmaGetAllocationInfo(GetAllocator(), params.pImageDevice->imageAllocation, &allocationInfo);
+
+        VulkanColorImageBarrier(vkCommand,
+                                params.pImageDevice->image,
+                                VK_IMAGE_LAYOUT_UNDEFINED,
+                                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                VK_ACCESS_2_NONE,
+                                VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                                VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT_KHR,
+                                VK_PIPELINE_STAGE_2_TRANSFER_BIT);
+
+        VkBufferImageCopy bufferImageCopyInfo;
+        {
+            bufferImageCopyInfo.bufferOffset      = 0U;
+            bufferImageCopyInfo.bufferImageHeight = 0U;
+            bufferImageCopyInfo.bufferRowLength   = 0U;
+            bufferImageCopyInfo.imageExtent       = { static_cast<uint32_t>(params.info.extent.width),
+                                                      static_cast<uint32_t>(params.info.extent.height),
+                                                      1U };
+            bufferImageCopyInfo.imageOffset       = { 0U, 0U, 0U };
+            bufferImageCopyInfo.imageSubresource  = { VK_IMAGE_ASPECT_COLOR_BIT, 0U, 0U, 1U };
+        }
+
+        vkCmdCopyBufferToImage(vkCommand,
+                               params.pBufferStaging->buffer,
+                               params.pImageDevice->image,
+                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                               1U,
+                               &bufferImageCopyInfo);
+
+        VulkanColorImageBarrier(vkCommand,
+                                params.pImageDevice->image,
+                                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                                VK_ACCESS_2_SHADER_READ_BIT,
+                                VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                                VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT);
+    }
+    SingleShotCommandEnd(this, vkCommand);
+}

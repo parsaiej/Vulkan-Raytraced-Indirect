@@ -146,19 +146,19 @@ void ResourceRegistry::_Commit()
             m_RenderContext->CreateStagingBuffer(512LL * 1024 * 1024, &stagingBuffer);
 
             // Initialize the device buffer upload info.
-            RenderContext::CreateDeviceBufferWithDataParams createInfo {};
+            RenderContext::CreateDeviceBufferWithDataParams deviceBufferCreateParams {};
             {
-                createInfo.pBufferStaging = &stagingBuffer;
+                deviceBufferCreateParams.pBufferStaging = &stagingBuffer;
 
                 // Obtain a thread-local command pool for submission work on this thread.
-                m_RenderContext->CreateCommandPool(&createInfo.commandPool);
+                m_RenderContext->CreateCommandPool(&deviceBufferCreateParams.commandPool);
             }
 
             // Reset the draw items list (Warning: will leak VRAM currently).
             m_DrawItems.clear();
 
             auto requestCount = static_cast<uint32_t>(m_DrawItemRequests.size());
-            auto requestIndex = 0U;
+            auto requestIndex = 1U;
 
             // Track meta-data.
             std::vector<DrawItemMetaData> drawItemMetaData;
@@ -180,20 +180,20 @@ void ResourceRegistry::_Commit()
 
                 // Create index buffer.
                 {
-                    createInfo.pData         = request.pIndexBufferHost;
-                    createInfo.size          = request.indexBufferSize;
-                    createInfo.pBufferDevice = &drawItem.bufferI;
-                    createInfo.usage         = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-                    m_RenderContext->CreateDeviceBufferWithData(createInfo);
+                    deviceBufferCreateParams.pData         = request.pIndexBufferHost;
+                    deviceBufferCreateParams.size          = request.indexBufferSize;
+                    deviceBufferCreateParams.pBufferDevice = &drawItem.bufferI;
+                    deviceBufferCreateParams.usage         = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+                    m_RenderContext->CreateDeviceBufferWithData(deviceBufferCreateParams);
                 }
 
                 // Create vertex buffer.
                 {
-                    createInfo.pData         = request.pVertexBufferHost;
-                    createInfo.size          = request.vertexBufferSize;
-                    createInfo.pBufferDevice = &drawItem.bufferV;
-                    createInfo.usage         = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-                    m_RenderContext->CreateDeviceBufferWithData(createInfo);
+                    deviceBufferCreateParams.pData         = request.pVertexBufferHost;
+                    deviceBufferCreateParams.size          = request.vertexBufferSize;
+                    deviceBufferCreateParams.pBufferDevice = &drawItem.bufferV;
+                    deviceBufferCreateParams.usage         = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+                    m_RenderContext->CreateDeviceBufferWithData(deviceBufferCreateParams);
                 }
 
                 // Push the draw item.
@@ -216,28 +216,67 @@ void ResourceRegistry::_Commit()
 
             // Upload the meta-data.
             {
-                createInfo.pData         = drawItemMetaData.data();
-                createInfo.size          = sizeof(DrawItemMetaData) * drawItemMetaData.size();
-                createInfo.pBufferDevice = &m_DrawItemMetaDataBuffer;
-                createInfo.usage         = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-                m_RenderContext->CreateDeviceBufferWithData(createInfo);
+                deviceBufferCreateParams.pData         = drawItemMetaData.data();
+                deviceBufferCreateParams.size          = sizeof(DrawItemMetaData) * drawItemMetaData.size();
+                deviceBufferCreateParams.pBufferDevice = &m_DrawItemMetaDataBuffer;
+                deviceBufferCreateParams.usage         = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+                m_RenderContext->CreateDeviceBufferWithData(deviceBufferCreateParams);
             }
 
             requestCount = static_cast<uint32_t>(m_MaterialRequests.size());
-            requestIndex = 0U;
+            requestIndex = 1U;
+
+            // Initialize the device image upload info.
+            RenderContext::CreateDeviceImageWithDataParams deviceImageCreateParams {};
+            {
+                deviceImageCreateParams.pBufferStaging = &stagingBuffer;
+
+                // Obtain a thread-local command pool for submission work on this thread.
+                // (Re-use the one made for buffer creation).
+                deviceImageCreateParams.commandPool = deviceBufferCreateParams.commandPool;
+            }
+
+            // Create a base image description.
+            deviceImageCreateParams.info = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
+            {
+                deviceImageCreateParams.info.imageType   = VK_IMAGE_TYPE_2D;
+                deviceImageCreateParams.info.arrayLayers = 1U;
+                deviceImageCreateParams.info.mipLevels   = 1U;
+                deviceImageCreateParams.info.samples     = VK_SAMPLE_COUNT_1_BIT;
+                deviceImageCreateParams.info.tiling      = VK_IMAGE_TILING_OPTIMAL;
+                deviceImageCreateParams.info.flags       = 0x0;
+                deviceImageCreateParams.info.usage       = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+            }
+
+            DebugLabelBufferResource(m_RenderContext, m_DrawItemMetaDataBuffer, "DrawItemMetaDataBuffer");
 
             // Process mesh requests.
             while (!m_MaterialRequests.empty())
             {
-                auto request = m_DrawItemRequests.front();
+                auto request = m_MaterialRequests.front();
 
                 spdlog::info("Upload GPU Material ----> [{} / {}]", requestIndex++, requestCount);
+
+                DeviceMaterial deviceMaterial;
+
+                // Albedo
+                {
+                    deviceImageCreateParams.pData         = request.albedo.data;
+                    deviceImageCreateParams.pImageDevice  = &deviceMaterial.albedo;
+                    deviceImageCreateParams.bytesPerTexel = static_cast<VkDeviceSize>(request.albedo.stride);
+                    deviceImageCreateParams.info.format   = request.albedo.format;
+                    deviceImageCreateParams.info.extent   = { static_cast<uint32_t>(request.albedo.dim[0]),
+                                                              static_cast<uint32_t>(request.albedo.dim[1]),
+                                                              1U };
+
+                    m_RenderContext->CreateDeviceImageWithData(deviceImageCreateParams);
+                }
+
+                m_DeviceMaterials.push_back(deviceMaterial);
 
                 // Request processed, remove.
                 m_MaterialRequests.pop();
             }
-
-            DebugLabelBufferResource(m_RenderContext, m_DrawItemMetaDataBuffer, "DrawItemMetaDataBuffer");
 
             // Free the scratch memory.
             vmaDestroyBuffer(m_RenderContext->GetAllocator(), stagingBuffer.buffer, stagingBuffer.bufferAllocation);
@@ -246,7 +285,7 @@ void ResourceRegistry::_Commit()
             BuildDescriptors();
 
             // Free the thread local command pool.
-            vkDestroyCommandPool(m_RenderContext->GetDevice(), createInfo.commandPool, nullptr);
+            vkDestroyCommandPool(m_RenderContext->GetDevice(), deviceBufferCreateParams.commandPool, nullptr);
 
             // Free host memory for buffer and image pools.
             {

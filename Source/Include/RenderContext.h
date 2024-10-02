@@ -58,11 +58,11 @@ public:
     struct CreateDeviceImageWithDataParams
     {
         void*             pData;
-        VkDeviceSize      size;
-        VkImageUsageFlags usage;
+        VkImageCreateInfo info;
+        VkDeviceSize      bytesPerTexel;
         VkCommandPool     commandPool;
         const Buffer*     pBufferStaging;
-        Image*            pImageStaging;
+        Image*            pImageDevice;
     };
 
     void CreateDeviceImageWithData(const CreateDeviceImageWithDataParams& params);
