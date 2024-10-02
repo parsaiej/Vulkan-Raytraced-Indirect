@@ -323,6 +323,19 @@ void ResourceRegistry::_GarbageCollect()
         vmaDestroyBuffer(m_RenderContext->GetAllocator(), drawItem.bufferI.buffer, drawItem.bufferI.bufferAllocation);
         vmaDestroyBuffer(m_RenderContext->GetAllocator(), drawItem.bufferV.buffer, drawItem.bufferV.bufferAllocation);
     }
+
+    auto ReleaseDeviceMaterialImage = [this](Image* pImage)
+    {
+        if (pImage->imageView != VK_NULL_HANDLE)
+            vkDestroyImageView(m_RenderContext->GetDevice(), pImage->imageView, nullptr);
+
+        vmaDestroyImage(m_RenderContext->GetAllocator(), pImage->image, pImage->imageAllocation);
+    };
+
+    for (auto& deviceMaterial : m_DeviceMaterials)
+    {
+        ReleaseDeviceMaterialImage(&deviceMaterial.albedo);
+    }
 }
 
 // ------------------------------------------------
