@@ -106,7 +106,8 @@ float4 DebugBarycentricCoordinate(Interpolators i)
     // Compute barycentric coordinates.
     Barycentric::Data barycentrics = Barycentric::Compute(positionCS0, positionCS1, positionCS2, -1 + 2 * i.texCoord, float2(1920, 1080));
 
-    return float4(barycentrics.m_lambda, 1);
+    // Lazy gamma-correct.
+    return float4(sqrt(barycentrics.m_lambda), 1);
 }
 
 float4 DebugDepth(Interpolators i)

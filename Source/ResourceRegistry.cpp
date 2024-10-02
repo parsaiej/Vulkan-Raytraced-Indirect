@@ -158,7 +158,7 @@ void ResourceRegistry::_Commit()
             m_DrawItems.clear();
 
             auto requestCount = static_cast<uint32_t>(m_DrawItemRequests.size());
-            auto requestIndex = 1U;
+            auto requestIndex = 0U;
 
             // Track meta-data.
             std::vector<DrawItemMetaData> drawItemMetaData;
@@ -168,7 +168,7 @@ void ResourceRegistry::_Commit()
             {
                 auto request = m_DrawItemRequests.front();
 
-                spdlog::info("Upload GPU Mesh ----> [{} / {}]", requestIndex++, requestCount);
+                spdlog::info("Upload GPU Mesh ----> [{} / {}]", ++requestIndex, requestCount);
 
                 DrawItem drawItem;
 
@@ -224,7 +224,7 @@ void ResourceRegistry::_Commit()
             }
 
             requestCount = static_cast<uint32_t>(m_MaterialRequests.size());
-            requestIndex = 1U;
+            requestIndex = 0U;
 
             // Initialize the device image upload info.
             RenderContext::CreateDeviceImageWithDataParams deviceImageCreateParams {};
@@ -250,12 +250,15 @@ void ResourceRegistry::_Commit()
 
             DebugLabelBufferResource(m_RenderContext, m_DrawItemMetaDataBuffer, "DrawItemMetaDataBuffer");
 
+            // Reset the device material list.
+            m_DeviceMaterials.clear();
+
             // Process mesh requests.
             while (!m_MaterialRequests.empty())
             {
                 auto request = m_MaterialRequests.front();
 
-                spdlog::info("Upload GPU Material ----> [{} / {}]", requestIndex++, requestCount);
+                spdlog::info("Upload GPU Material ----> [{} / {}]", ++requestIndex, requestCount);
 
                 DeviceMaterial deviceMaterial;
 

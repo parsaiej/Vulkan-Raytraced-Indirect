@@ -454,6 +454,10 @@ void RenderContext::CreateDeviceBufferWithData(const CreateDeviceBufferWithDataP
 
 void RenderContext::CreateDeviceImageWithData(const CreateDeviceImageWithDataParams& params)
 {
+    // Handle case where the params are invalid.
+    if (params.pData == nullptr || params.info.extent.width == 0 || params.info.extent.height == 0)
+        return;
+
     // Create dedicate device memory for the image
     // -----------------------------------------------------
 
