@@ -8,7 +8,7 @@
 
 void CreateDrawItemDescriptorLayout(RenderContext* pRenderContext, VkDescriptorSetLayout& descriptorLayout)
 {
-    std::vector<VkDescriptorBindingFlags> bindingFlags(2U, VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT_EXT);
+    std::vector<VkDescriptorBindingFlags> bindingFlags(3U, VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT_EXT);
 
     // The last binding is fully bound / normal.
     bindingFlags.push_back(0x0);
@@ -27,8 +27,11 @@ void CreateDrawItemDescriptorLayout(RenderContext* pRenderContext, VkDescriptorS
         // Binding 1: Vertex Buffers
         bindings.push_back(VkDescriptorSetLayoutBinding(1U, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4096U, VK_SHADER_STAGE_FRAGMENT_BIT, VK_NULL_HANDLE));
 
-        // Binding 2: Meta-data
-        bindings.push_back(VkDescriptorSetLayoutBinding(2U, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1U, VK_SHADER_STAGE_FRAGMENT_BIT, VK_NULL_HANDLE));
+        // Binding 2: Texture Coordinate Buffers
+        bindings.push_back(VkDescriptorSetLayoutBinding(2U, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4096U, VK_SHADER_STAGE_FRAGMENT_BIT, VK_NULL_HANDLE));
+
+        // Binding 3: Meta-data
+        bindings.push_back(VkDescriptorSetLayoutBinding(3U, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1U, VK_SHADER_STAGE_FRAGMENT_BIT, VK_NULL_HANDLE));
     }
 
     VkDescriptorSetLayoutCreateInfo descriptorSetLayoutInfo { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
@@ -45,6 +48,9 @@ void CreateMaterialDataDescriptorLayout(RenderContext* pRenderContext, VkDescrip
 {
     std::vector<VkDescriptorBindingFlags> bindingFlags(1U, VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT_EXT);
 
+    // The last binding is fully bound / normal.
+    bindingFlags.push_back(0x0);
+
     VkDescriptorSetLayoutBindingFlagsCreateInfo descriptorSetFlags { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO_EXT };
     {
         descriptorSetFlags.bindingCount  = static_cast<uint32_t>(bindingFlags.size());
@@ -55,6 +61,9 @@ void CreateMaterialDataDescriptorLayout(RenderContext* pRenderContext, VkDescrip
     {
         // Binding 0: Albedo Images
         bindings.push_back(VkDescriptorSetLayoutBinding(0U, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 4096U, VK_SHADER_STAGE_FRAGMENT_BIT, VK_NULL_HANDLE));
+
+        // Binding 1: Point Sampler
+        bindings.push_back(VkDescriptorSetLayoutBinding(1U, VK_DESCRIPTOR_TYPE_SAMPLER, 1U, VK_SHADER_STAGE_FRAGMENT_BIT, VK_NULL_HANDLE));
     }
 
     VkDescriptorSetLayoutCreateInfo descriptorSetLayoutInfo { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
@@ -78,6 +87,19 @@ ResourceRegistry::ResourceRegistry(RenderContext* pRenderContext) :
     // Reserve pool memory.
     m_HostBufferPool.resize(kHostBufferPoolMaxBytes);
     m_HostImagePool.resize(kHostImagePoolMaxBytes);
+
+    // Create default material image sampler.
+    VkSamplerCreateInfo deviceMaterialSamplerInfo = { VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
+    {
+        deviceMaterialSamplerInfo.magFilter = VK_FILTER_NEAREST;
+        deviceMaterialSamplerInfo.minFilter = VK_FILTER_NEAREST;
+
+        deviceMaterialSamplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        deviceMaterialSamplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        deviceMaterialSamplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    }
+    Check(vkCreateSampler(m_RenderContext->GetDevice(), &deviceMaterialSamplerInfo, nullptr, &m_DeviceMaterialImageSampler),
+          "Failed to create device material image sampler.");
 
     m_CommitTaskBusy.store(false);
 }
@@ -123,6 +145,7 @@ void ResourceRegistry::BuildDescriptors()
 
         WriteDrawItemBufferDescriptor(0U, drawItemIndex, drawItem.bufferI.buffer);
         WriteDrawItemBufferDescriptor(1U, drawItemIndex, drawItem.bufferV.buffer);
+        WriteDrawItemBufferDescriptor(2U, drawItemIndex, drawItem.bufferST.buffer);
     }
 
     spdlog::info("Created draw item buffer descriptors.");
@@ -130,7 +153,7 @@ void ResourceRegistry::BuildDescriptors()
     // Draw Item Meta-data
     // ---------------------------------
 
-    WriteDrawItemBufferDescriptor(2U, 0U, m_DrawItemMetaDataBuffer.buffer);
+    WriteDrawItemBufferDescriptor(3U, 0U, m_DrawItemMetaDataBuffer.buffer);
 
     // Device Material Images
     // ---------------------------------
@@ -172,6 +195,23 @@ void ResourceRegistry::BuildDescriptors()
 
         WriteDeviceMaterialImageDescriptor(0U, deviceMaterialIndex, deviceMaterial.albedo.imageView);
     }
+
+    // Point Sampler for Material Images.
+
+    VkDescriptorImageInfo samplerInfo {};
+    {
+        samplerInfo.sampler = m_DeviceMaterialImageSampler;
+    }
+
+    VkWriteDescriptorSet samplerDescriptorWrite { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+    {
+        samplerDescriptorWrite.descriptorType  = VK_DESCRIPTOR_TYPE_SAMPLER;
+        samplerDescriptorWrite.descriptorCount = 1U;
+        samplerDescriptorWrite.dstSet          = m_MaterialDataDescriptorSet;
+        samplerDescriptorWrite.dstBinding      = 1U;
+        samplerDescriptorWrite.pImageInfo      = &samplerInfo;
+    }
+    vkUpdateDescriptorSets(m_RenderContext->GetDevice(), 1U, &samplerDescriptorWrite, 0U, nullptr);
 }
 
 void ResourceRegistry::_Commit()
@@ -314,11 +354,21 @@ void ResourceRegistry::_Commit()
                     m_RenderContext->CreateDeviceBufferWithData(deviceBufferCreateParams);
                 }
 
+                // Create texture coordinate buffer.
+                {
+                    deviceBufferCreateParams.pData         = request.pTexcoordBufferHost;
+                    deviceBufferCreateParams.size          = request.texcoordBufferSize;
+                    deviceBufferCreateParams.pBufferDevice = &drawItem.bufferST;
+                    deviceBufferCreateParams.usage         = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+                    m_RenderContext->CreateDeviceBufferWithData(deviceBufferCreateParams);
+                }
+
                 // Push the draw item.
                 m_DrawItems.push_back(drawItem);
 
                 DebugLabelBufferResource(m_RenderContext, drawItem.bufferI, "IndexBuffer");
                 DebugLabelBufferResource(m_RenderContext, drawItem.bufferV, "VertexBuffer");
+                DebugLabelBufferResource(m_RenderContext, drawItem.bufferST, "TexCoordBuffer");
 
                 // Push the gpu meta-data about the draw item.
                 DrawItemMetaData metaData {};
@@ -382,10 +432,13 @@ void ResourceRegistry::_GarbageCollect()
 
     vmaDestroyBuffer(m_RenderContext->GetAllocator(), m_DrawItemMetaDataBuffer.buffer, m_DrawItemMetaDataBuffer.bufferAllocation);
 
+    vkDestroySampler(m_RenderContext->GetDevice(), m_DeviceMaterialImageSampler, nullptr);
+
     for (auto& drawItem : m_DrawItems)
     {
         vmaDestroyBuffer(m_RenderContext->GetAllocator(), drawItem.bufferI.buffer, drawItem.bufferI.bufferAllocation);
         vmaDestroyBuffer(m_RenderContext->GetAllocator(), drawItem.bufferV.buffer, drawItem.bufferV.bufferAllocation);
+        vmaDestroyBuffer(m_RenderContext->GetAllocator(), drawItem.bufferST.buffer, drawItem.bufferST.bufferAllocation);
     }
 
     auto ReleaseDeviceMaterialImage = [this](Image* pImage)
@@ -414,9 +467,13 @@ void ResourceRegistry::PushDrawItemRequest(DrawItemRequest& request)
     auto bufferSizeVPrev = m_HostBufferPoolSize;
     m_HostBufferPoolSize += request.vertexBufferSize;
 
+    auto bufferSizeSTPrev = m_HostBufferPoolSize;
+    m_HostBufferPoolSize += request.texcoordBufferSize;
+
     // Map a pointer back in the pool that the client can fill with data.
-    request.pIndexBufferHost  = reinterpret_cast<void*>(&m_HostBufferPool.at(bufferSizeIPrev));
-    request.pVertexBufferHost = reinterpret_cast<void*>(&m_HostBufferPool.at(bufferSizeVPrev));
+    request.pIndexBufferHost    = reinterpret_cast<void*>(&m_HostBufferPool.at(bufferSizeIPrev));
+    request.pVertexBufferHost   = reinterpret_cast<void*>(&m_HostBufferPool.at(bufferSizeVPrev));
+    request.pTexcoordBufferHost = reinterpret_cast<void*>(&m_HostBufferPool.at(bufferSizeSTPrev));
 
     // Push the request.
     m_DrawItemRequests.push(request);

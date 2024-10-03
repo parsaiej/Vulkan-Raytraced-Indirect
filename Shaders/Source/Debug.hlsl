@@ -23,11 +23,17 @@ struct DrawItemMetaData
     uint2    unused;
 };
 
+// Set #0
+// -----------------
+
 [[vk::binding(0, 0)]]
 Texture2D<uint> _VisibilityBuffer;
 
 [[vk::binding(1, 0)]]
 Texture2D<float> _DepthBuffer;
+
+// Set #1
+// -----------------
 
 [[vk::binding(0, 1)]]
 ByteAddressBuffer _IndexBuffers[];
@@ -36,10 +42,19 @@ ByteAddressBuffer _IndexBuffers[];
 ByteAddressBuffer _VertexBuffers[];
 
 [[vk::binding(2, 1)]]
+ByteAddressBuffer _TexcoordBuffers[];
+
+[[vk::binding(3, 1)]]
 StructuredBuffer<DrawItemMetaData> _DrawItemMetaData;
+
+// Set #2
+// -----------------
 
 [[vk::binding(0, 2)]]
 Texture2D<float4> _AlbedoImages[];
+
+[[vk::binding(1, 2)]]
+SamplerState _DeviceMaterialImageSampler;
 
 float3 ColorCycle(uint index, uint count)
 {
@@ -109,8 +124,14 @@ float4 DebugBarycentricCoordinate(Interpolators i)
     // Compute barycentric coordinates.
     Barycentric::Data barycentrics = Barycentric::Compute(positionCS0, positionCS1, positionCS2, -1 + 2 * i.texCoord, float2(1920, 1080));
 
+#if 1
     // Lazy gamma-correct.
     return float4(sqrt(barycentrics.m_lambda), 1);
+#else
+    
+    return _AlbedoImages[NonUniformResourceIndex(_DrawItemMetaData[meshIndex].materialIndex)].Load(uint3(0, 0, 0));
+
+#endif
 }
 
 float4 DebugDepth(Interpolators i)

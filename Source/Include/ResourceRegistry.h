@@ -15,11 +15,12 @@ struct DrawItem
 
     Buffer bufferI;
     Buffer bufferV;
+    Buffer bufferST;
 };
 
 struct DeviceMaterial
 {
-    size_t hash;
+    size_t hash {};
     Image  albedo;
 };
 
@@ -48,6 +49,9 @@ struct DrawItemRequest
 
     void*  pVertexBufferHost;
     size_t vertexBufferSize;
+
+    void*  pTexcoordBufferHost;
+    size_t texcoordBufferSize;
 };
 
 struct MaterialRequest
@@ -98,6 +102,8 @@ private:
     std::vector<DeviceMaterial> m_DeviceMaterials;
 
     Buffer m_DrawItemMetaDataBuffer;
+
+    VkSampler m_DeviceMaterialImageSampler;
 
     // Using VK_EXT_descriptor_indexing to bind all resource arrays to PSO.
     VkDescriptorSetLayout m_DrawItemDataDescriptorLayout;

@@ -53,22 +53,46 @@ void Mesh::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParams, H
     VtVec3iArray triangles;
     meshUtil.ComputeTriangleIndices(&triangles, &trianglePrimitiveParams);
 
+    VtVec2fArray texCoords;
+    if (pSceneDelegate->Get(GetId(), TfToken("primvars:st")).IsHolding<VtVec2fArray>())
+    {
+        texCoords = pSceneDelegate->Get(GetId(), TfToken("primvars:st")).Get<VtVec2fArray>();
+
+        // https://graphics.pixar.com/opensubdiv/docs/subdivision_surfaces.html#face-varying-interpolation-rules
+        // HdVtBufferSource pTexcoordSource(TfToken("TextureCoordinateSource"),
+        //                                  VtValue(pSceneDelegate->Get(GetId(), TfToken("primvars:st")).Get<VtVec2fArray>()));
+
+        // Triangule the texture coordinate prim vars.
+        //         VtValue pTexcoordTriangulationResult;
+        //         Check(meshUtil.ComputeTriangulatedFaceVaryingPrimvar(pTexcoordSource.GetData(),
+        //                                                              static_cast<int>(pTexcoordSource.GetNumElements()),
+        //                                                              pTexcoordSource.GetTupleType().type,
+        //                                                              &pTexcoordTriangulationResult),
+        //               "Failed to triangulate texture coordinate list.");
+        //
+        //         // Write back the result.
+        //         texCoords = pTexcoordTriangulationResult.UncheckedGet<VtVec2fArray>();
+    }
+
     auto* pResourceRegistry = std::static_pointer_cast<ResourceRegistry>(m_Owner->GetResourceRegistry()).get();
 
-    uint64_t sizeBytesI = sizeof(GfVec3i) * triangles.size();
-    uint64_t sizeBytesV = sizeof(GfVec3f) * pPoints.size();
+    uint64_t sizeBytesI  = sizeof(GfVec3i) * triangles.size();
+    uint64_t sizeBytesV  = sizeof(GfVec3f) * pPoints.size();
+    uint64_t sizeBytesST = sizeof(GfVec2f) * texCoords.size();
 
     // Fetch the allocation needed.
     DrawItemRequest request { this };
     {
-        request.indexBufferSize  = sizeBytesI;
-        request.vertexBufferSize = sizeBytesV;
+        request.indexBufferSize    = sizeBytesI;
+        request.vertexBufferSize   = sizeBytesV;
+        request.texcoordBufferSize = sizeBytesST;
     }
     pResourceRegistry->PushDrawItemRequest(request);
 
     // Copy into the pool.
     memcpy(request.pVertexBufferHost, pPoints.data(), sizeBytesV);
     memcpy(request.pIndexBufferHost, triangles.data(), sizeBytesI);
+    memcpy(request.pTexcoordBufferHost, texCoords.data(), sizeBytesST);
 
     spdlog::info("Pre-processed Mesh: {}", GetId().GetText());
 
