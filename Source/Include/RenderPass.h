@@ -39,7 +39,8 @@ public:
         MeshID,
         PrimitiveID,
         BarycentricCoordinate,
-        Depth
+        Depth,
+        Albedo
     };
 
     RenderPass(HdRenderIndex* pRenderIndex, const HdRprimCollection& collection, RenderDelegate* pRenderDelegate);

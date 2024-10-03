@@ -38,6 +38,9 @@ ByteAddressBuffer _VertexBuffers[];
 [[vk::binding(2, 1)]]
 StructuredBuffer<DrawItemMetaData> _DrawItemMetaData;
 
+[[vk::binding(0, 2)]]
+Texture2D<float4> _AlbedoImages[];
+
 float3 ColorCycle(uint index, uint count)
 {
 	float t = frac(index / (float)count);
@@ -115,6 +118,18 @@ float4 DebugDepth(Interpolators i)
     return _DepthBuffer.Load(uint3(i.positionCS.xy, 0)).xxxx;
 }
 
+float4 DebugAlbedo(Interpolators i)
+{
+    uint visibility = _VisibilityBuffer.Load(uint3(i.positionCS.xy, 0));
+
+    if (!visibility)
+        return 0;
+
+    float4 albedo = _AlbedoImages[NonUniformResourceIndex(0U)].Load(uint3(0, 0, 0));
+
+    return float4(albedo.rgb, 1);
+}
+
 float4 Frag(Interpolators i) : SV_Target
 {
     switch(gConstants.DebugModeValue)
@@ -127,6 +142,8 @@ float4 Frag(Interpolators i) : SV_Target
             return DebugBarycentricCoordinate(i);
         case 4:
             return DebugDepth(i);
+        case 5:
+            return DebugAlbedo(i);
         break;
     }
 

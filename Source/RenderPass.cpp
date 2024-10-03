@@ -215,6 +215,7 @@ void RenderPass::DebugPassCreate(RenderContext* pRenderContext)
     {
         debugPipelineSetLayouts.push_back(m_DebugDescriptorSetLayout);
         debugPipelineSetLayouts.push_back(pResourceRegistry->GetDrawItemDataDescriptorLayout());
+        debugPipelineSetLayouts.push_back(pResourceRegistry->GetMaterialDataDescriptorLayout());
     }
 
     // Pipeline Layout
@@ -535,6 +536,18 @@ void RenderPass::DebugPassExecute(FrameContext* pFrameContext)
                                 1U,
                                 1U,
                                 &pFrameContext->pResourceRegistry->GetDrawItemDataDescriptorSet(),
+                                0U,
+                                nullptr);
+    }
+
+    // Similarly, bind material data.
+    {
+        vkCmdBindDescriptorSets(pFrameContext->pFrame->cmd,
+                                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                m_DebugPipelineLayout,
+                                2U,
+                                1U,
+                                &pFrameContext->pResourceRegistry->GetMaterialDataDescriptorSet(),
                                 0U,
                                 nullptr);
     }

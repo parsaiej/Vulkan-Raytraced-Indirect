@@ -84,6 +84,9 @@ ResourceRegistry::ResourceRegistry(RenderContext* pRenderContext) :
 
 void ResourceRegistry::BuildDescriptors()
 {
+    // Draw Item Buffer Descriptors
+    // ---------------------------------
+
     VkDescriptorSetAllocateInfo descriptorsAllocInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
     {
         descriptorsAllocInfo.descriptorSetCount = 1U;
@@ -122,10 +125,53 @@ void ResourceRegistry::BuildDescriptors()
         WriteDrawItemBufferDescriptor(1U, drawItemIndex, drawItem.bufferV.buffer);
     }
 
-    // Also write the meta-data.
+    spdlog::info("Created draw item buffer descriptors.");
+
+    // Draw Item Meta-data
+    // ---------------------------------
+
     WriteDrawItemBufferDescriptor(2U, 0U, m_DrawItemMetaDataBuffer.buffer);
 
-    spdlog::info("Created draw item buffer descriptors.");
+    // Device Material Images
+    // ---------------------------------
+
+    {
+        // Re-use prior descriptor set info with the material data layout.
+        descriptorsAllocInfo.pSetLayouts = &m_MaterialDataDescriptorLayout;
+    }
+    Check(vkAllocateDescriptorSets(m_RenderContext->GetDevice(), &descriptorsAllocInfo, &m_MaterialDataDescriptorSet),
+          "Failed to allocate indexed resource descriptor sets.");
+
+    auto WriteDeviceMaterialImageDescriptor = [&](uint32_t dstBinding, uint32_t dstIndex, VkImageView imageView)
+    {
+        // Skip writes for invalid images
+        if (imageView == VK_NULL_HANDLE)
+            return;
+
+        VkDescriptorImageInfo imageInfo {};
+        {
+            imageInfo.imageView   = imageView;
+            imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        }
+
+        VkWriteDescriptorSet descriptorWrite { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+        {
+            descriptorWrite.descriptorType  = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+            descriptorWrite.descriptorCount = 1U;
+            descriptorWrite.dstSet          = m_MaterialDataDescriptorSet;
+            descriptorWrite.dstBinding      = dstBinding;
+            descriptorWrite.dstArrayElement = dstIndex;
+            descriptorWrite.pImageInfo      = &imageInfo;
+        }
+        vkUpdateDescriptorSets(m_RenderContext->GetDevice(), 1U, &descriptorWrite, 0U, nullptr);
+    };
+
+    for (uint32_t deviceMaterialIndex = 0U; deviceMaterialIndex < m_DeviceMaterials.size(); deviceMaterialIndex++)
+    {
+        auto& deviceMaterial = m_DeviceMaterials[deviceMaterialIndex];
+
+        WriteDeviceMaterialImageDescriptor(0U, deviceMaterialIndex, deviceMaterial.albedo.imageView);
+    }
 }
 
 void ResourceRegistry::_Commit()

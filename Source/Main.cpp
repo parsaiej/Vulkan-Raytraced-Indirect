@@ -190,7 +190,7 @@ int main()
 
             ImGui::SameLine();
 
-            const char* kModeNames[] = { "None", "MeshID", "PrimitiveID", "BarycentricCoordinate", "Depth" };
+            const char* kModeNames[] = { "None", "MeshID", "PrimitiveID", "BarycentricCoordinate", "Depth", "Albedo" };
             ImGui::Combo("Debug", &s_DebugModeIndex, kModeNames, IM_ARRAYSIZE(kModeNames));
 
             ImGui::Separator();
