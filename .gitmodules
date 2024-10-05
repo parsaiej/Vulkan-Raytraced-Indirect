@@ -10,6 +10,3 @@
 [submodule "External/meshoptimizer"]
 	path = External/meshoptimizer
 	url = git@github.com:zeux/meshoptimizer.git
-[submodule "External/FidelityFX-SDK"]
-	path = External/FidelityFX-SDK
-	url = git@github.com:GPUOpen-LibrariesAndSDKs/FidelityFX-SDK.git
