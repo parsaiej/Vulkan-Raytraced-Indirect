@@ -131,4 +131,9 @@ using namespace DirectX::SimpleMath;
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
+// FidelityFX
+// ---------------------------------------------------------
+
+#include <FidelityFX/host/ffx_brixelizer.h>
+
 #endif

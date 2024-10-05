@@ -301,6 +301,19 @@ RenderPass::RenderPass(HdRenderIndex* pRenderIndex, const HdRprimCollection& col
     // --------------------------------------
 
     DebugPassCreate(pRenderContext);
+
+    // Initialize AMD Brixelizer + GI.
+    // --------------------------------------
+
+    FfxBrixelizerContextDescription brixelizerContextDesc = {};
+    {
+        // Need to be where the cockpit seat is / current camera location.
+        brixelizerContextDesc.sdfCenter[0] = 0;
+        brixelizerContextDesc.sdfCenter[0] = 0;
+        brixelizerContextDesc.sdfCenter[0] = 0;
+        brixelizerContextDesc.numCascades  = 4U;
+    }
+    Check(ffxBrixelizerContextCreate(&brixelizerContextDesc, &m_BrixelizerContext), "Failed to intiliaze a Brixelizer context.");
 }
 
 RenderPass::~RenderPass()
@@ -309,6 +322,8 @@ RenderPass::~RenderPass()
     auto* pRenderContext = m_Owner->GetRenderContext();
 
     vkDeviceWaitIdle(pRenderContext->GetDevice());
+
+    Check(ffxBrixelizerContextDestroy(&m_BrixelizerContext), "Failed to destroy Brixelizer context.");
 
     vkDestroyImageView(pRenderContext->GetDevice(), m_ColorAttachment.imageView, nullptr);
     vkDestroyImageView(pRenderContext->GetDevice(), m_DepthAttachment.imageView, nullptr);

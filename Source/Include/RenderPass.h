@@ -74,6 +74,8 @@ private:
 
     VkSampler m_DefaultSampler;
 
+    FfxBrixelizerContext m_BrixelizerContext {};
+
     // Resource Descriptors
     // ---------------------------------------
 

@@ -51,6 +51,15 @@ inline void Check(bool a, const char* b)
     }
 }
 
+inline void Check(FfxErrorCode a, const char* b)
+{
+    if (a != FFX_OK)
+    {
+        spdlog::critical(b);
+        exit(1);
+    }
+}
+
 #endif
 
 // CPU Profile Macro
