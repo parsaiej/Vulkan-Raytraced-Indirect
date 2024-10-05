@@ -74,7 +74,12 @@ private:
 
     VkSampler m_DefaultSampler;
 
-    FfxBrixelizerContext m_BrixelizerContext {};
+    // FidelityFX Primitives
+    // ---------------------------------------
+
+    FfxDevice            m_FFXDevice {};
+    FfxInterface         m_FFXInterface {};
+    FfxBrixelizerContext m_FFXBrixelizerContext {};
 
     // Resource Descriptors
     // ---------------------------------------

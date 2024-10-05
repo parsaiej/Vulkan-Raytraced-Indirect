@@ -134,6 +134,7 @@ PXR_NAMESPACE_USING_DIRECTIVE
 // FidelityFX
 // ---------------------------------------------------------
 
+#include <FidelityFX/host/backends/vk/ffx_vk.h>
 #include <FidelityFX/host/ffx_brixelizer.h>
 
 #endif
