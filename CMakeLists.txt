@@ -113,6 +113,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${Stb_INCLUDE_DIR}
     ${PXR_INCLUDE_DIR}
     ${IMGUI_INC}
+    External/FidelityFX/include
 )
 
 # Link
@@ -128,6 +129,10 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     Microsoft::DirectXTK12
     meshoptimizer
     ${PXR_LIBRARIES}
+
+    # FidelityFX SDK (For brixelizer)
+    ${CMAKE_SOURCE_DIR}/External/FidelityFX/bin/ffx_backend_vk_x64.lib
+    ${CMAKE_SOURCE_DIR}/External/FidelityFX/bin/ffx_brixelizer_x64.lib
 )
 
 if (${USE_SUPERLUMINAL})
