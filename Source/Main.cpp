@@ -155,7 +155,8 @@ int main()
     // ------------------------------------------------
 
     static int  s_DebugSceneIndex  = 0U;
-    const char* kDebugScenePaths[] = { "..\\Assets\\scene.usd", "C:\\Development\\hercules\\cockpit.usd" };
+    const char* kDebugScenePaths[] = { "C:\\Development\\OpenUSD_Install_Release\\resources\\flattened_chess_set.usd",
+                                       "C:\\Development\\hercules\\cockpit.usd" };
 
     static int s_DebugModeIndex = 0U; // NOLINT
 

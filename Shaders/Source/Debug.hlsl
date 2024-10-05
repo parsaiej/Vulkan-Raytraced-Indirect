@@ -86,7 +86,7 @@ float4 DebugPrimitiveID(Interpolators i)
     const uint meshIndex = visibility >> 16U;
     const uint primIndex = visibility & 0xFFFF;
 
-    return float4(ColorCycle(primIndex % 3, 3), 1);
+    return float4(ColorCycle(primIndex, _DrawItemMetaData[meshIndex].faceCount), 1);
 }
 
 #include "Barycentric.hlsl"
@@ -124,12 +124,21 @@ float4 DebugBarycentricCoordinate(Interpolators i)
     // Compute barycentric coordinates.
     Barycentric::Data barycentrics = Barycentric::Compute(positionCS0, positionCS1, positionCS2, -1 + 2 * i.texCoord, float2(1920, 1080));
 
-#if 1
+#if 0
     // Lazy gamma-correct.
     return float4(sqrt(barycentrics.m_lambda), 1);
 #else
     
-    return _AlbedoImages[NonUniformResourceIndex(_DrawItemMetaData[meshIndex].materialIndex)].Load(uint3(0, 0, 0));
+    // Load texture coordinates.
+    float2 st0 = asfloat(_TexcoordBuffers[NonUniformResourceIndex(meshIndex)].Load2((primIndex * 3U + 0U) << 3U));
+    float2 st1 = asfloat(_TexcoordBuffers[NonUniformResourceIndex(meshIndex)].Load2((primIndex * 3U + 1U) << 3U));
+    float2 st2 = asfloat(_TexcoordBuffers[NonUniformResourceIndex(meshIndex)].Load2((primIndex * 3U + 2U) << 3U));
+
+    float2 st = barycentrics.m_lambda.x * st0 + barycentrics.m_lambda.y * st1 + barycentrics.m_lambda.z * st2;
+
+    st = float2(st.x, 1.0 - st.y);
+
+    return sqrt(_AlbedoImages[NonUniformResourceIndex(_DrawItemMetaData[meshIndex].materialIndex)].Sample(_DeviceMaterialImageSampler, st));
 
 #endif
 }

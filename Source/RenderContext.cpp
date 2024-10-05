@@ -402,7 +402,7 @@ void RenderContext::CreateStagingBuffer(VkDeviceSize size, Buffer* pStagingBuffe
           "Failed to create staging buffer memory.");
 }
 
-void RenderContext::CreateDeviceBufferWithData(const CreateDeviceBufferWithDataParams& params)
+void RenderContext::CreateDeviceBufferWithData(CreateDeviceBufferWithDataParams& params)
 {
     if (params.pData == nullptr || params.size == 0U)
         return;
@@ -452,11 +452,14 @@ void RenderContext::CreateDeviceBufferWithData(const CreateDeviceBufferWithDataP
     SingleShotCommandEnd(this, vkCommand);
 }
 
-void RenderContext::CreateDeviceImageWithData(const CreateDeviceImageWithDataParams& params)
+void RenderContext::CreateDeviceImageWithData(CreateDeviceImageWithDataParams& params)
 {
     // Handle case where the params are invalid.
     if (params.pData == nullptr || params.info.extent.width == 0 || params.info.extent.height == 0)
         return;
+
+    // Patch the sType if it wasn't set.
+    params.info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
 
     // Create dedicate device memory for the image
     // -----------------------------------------------------

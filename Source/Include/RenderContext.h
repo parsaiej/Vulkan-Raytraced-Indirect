@@ -53,7 +53,7 @@ public:
         Buffer*            pBufferDevice;
     };
 
-    void CreateDeviceBufferWithData(const CreateDeviceBufferWithDataParams& params);
+    void CreateDeviceBufferWithData(CreateDeviceBufferWithDataParams& params);
 
     struct CreateDeviceImageWithDataParams
     {
@@ -65,7 +65,7 @@ public:
         Image*            pImageDevice;
     };
 
-    void CreateDeviceImageWithData(const CreateDeviceImageWithDataParams& params);
+    void CreateDeviceImageWithData(CreateDeviceImageWithDataParams& params);
 
 private:
 

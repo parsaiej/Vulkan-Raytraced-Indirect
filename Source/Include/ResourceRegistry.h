@@ -95,6 +95,8 @@ private:
     std::atomic<bool> m_CommitTaskBusy;
     tbb::task_group   m_CommitTask;
 
+    Image m_DefaultImage;
+
     std::queue<DrawItemRequest> m_DrawItemRequests;
     std::vector<DrawItem>       m_DrawItems;
 

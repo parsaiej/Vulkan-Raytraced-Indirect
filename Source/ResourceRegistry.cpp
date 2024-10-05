@@ -88,6 +88,38 @@ ResourceRegistry::ResourceRegistry(RenderContext* pRenderContext) :
     m_HostBufferPool.resize(kHostBufferPoolMaxBytes);
     m_HostImagePool.resize(kHostImagePoolMaxBytes);
 
+    // Create default resources.
+    {
+        VkDeviceSize defaultResourceBytes = static_cast<VkDeviceSize>(4LL * 4 * sizeof(float));
+
+        Buffer stagingBuffer;
+        m_RenderContext->CreateStagingBuffer(defaultResourceBytes, &stagingBuffer);
+
+        // Black texels.
+        std::vector<uint8_t> defaultImagePixels(defaultResourceBytes, 0);
+
+        RenderContext::CreateDeviceImageWithDataParams imageParams {};
+        {
+            imageParams.pImageDevice     = &m_DefaultImage;
+            imageParams.pBufferStaging   = &stagingBuffer;
+            imageParams.pData            = defaultImagePixels.data();
+            imageParams.bytesPerTexel    = defaultResourceBytes;
+            imageParams.commandPool      = m_RenderContext->GetCommandPool();
+            imageParams.info.imageType   = VK_IMAGE_TYPE_2D;
+            imageParams.info.arrayLayers = 1U;
+            imageParams.info.mipLevels   = 1U;
+            imageParams.info.samples     = VK_SAMPLE_COUNT_1_BIT;
+            imageParams.info.tiling      = VK_IMAGE_TILING_OPTIMAL;
+            imageParams.info.flags       = 0x0;
+            imageParams.info.usage       = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+            imageParams.info.format      = VK_FORMAT_R8G8B8A8_SRGB;
+            imageParams.info.extent      = { 2U, 2U, 1U };
+        }
+        m_RenderContext->CreateDeviceImageWithData(imageParams);
+
+        vmaDestroyBuffer(m_RenderContext->GetAllocator(), stagingBuffer.buffer, stagingBuffer.bufferAllocation);
+    }
+
     // Create default material image sampler.
     VkSamplerCreateInfo deviceMaterialSamplerInfo = { VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
     {
@@ -167,9 +199,11 @@ void ResourceRegistry::BuildDescriptors()
 
     auto WriteDeviceMaterialImageDescriptor = [&](uint32_t dstBinding, uint32_t dstIndex, VkImageView imageView)
     {
-        // Skip writes for invalid images
         if (imageView == VK_NULL_HANDLE)
-            return;
+        {
+            // Patch in the default image for this descriptor if the provided one is invalid.
+            imageView = m_DefaultImage.imageView;
+        }
 
         VkDescriptorImageInfo imageInfo {};
         {
@@ -310,7 +344,7 @@ void ResourceRegistry::_Commit()
             std::vector<DrawItemMetaData> drawItemMetaData;
 
             // Utility for finding the material descriptor index for a draw item.
-            auto TryFindDeviceMaterialIndex = [this](uint32_t& index, const size_t& hash)
+            auto TryFindDeviceMaterialIndex = [this](const size_t& hash)
             {
                 for (uint32_t deviceMaterialIndex = 0U; deviceMaterialIndex < m_DeviceMaterials.size(); deviceMaterialIndex++)
                 {
@@ -318,6 +352,7 @@ void ResourceRegistry::_Commit()
                         return deviceMaterialIndex;
                 }
 
+                // This need to point to the "default" descriptor.
                 return UINT_MAX;
             };
 
@@ -377,7 +412,7 @@ void ResourceRegistry::_Commit()
                     metaData.faceCount = drawItem.indexCount / 3U;
 
                     // Search for material binding in the flattened GPU descriptor list, if any.
-                    TryFindDeviceMaterialIndex(metaData.materialIndex, drawItem.pMesh->GetMaterialHash());
+                    metaData.materialIndex = TryFindDeviceMaterialIndex(drawItem.pMesh->GetMaterialHash());
                 }
                 drawItemMetaData.push_back(metaData);
 
@@ -431,6 +466,12 @@ void ResourceRegistry::_GarbageCollect()
     vkDestroyDescriptorSetLayout(m_RenderContext->GetDevice(), m_MaterialDataDescriptorLayout, nullptr);
 
     vmaDestroyBuffer(m_RenderContext->GetAllocator(), m_DrawItemMetaDataBuffer.buffer, m_DrawItemMetaDataBuffer.bufferAllocation);
+
+    {
+        // Default image.
+        vkDestroyImageView(m_RenderContext->GetDevice(), m_DefaultImage.imageView, nullptr);
+        vmaDestroyImage(m_RenderContext->GetAllocator(), m_DefaultImage.image, m_DefaultImage.imageAllocation);
+    }
 
     vkDestroySampler(m_RenderContext->GetDevice(), m_DeviceMaterialImageSampler, nullptr);
 

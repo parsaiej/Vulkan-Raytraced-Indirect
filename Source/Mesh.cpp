@@ -56,22 +56,20 @@ void Mesh::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParams, H
     VtVec2fArray texCoords;
     if (pSceneDelegate->Get(GetId(), TfToken("primvars:st")).IsHolding<VtVec2fArray>())
     {
-        texCoords = pSceneDelegate->Get(GetId(), TfToken("primvars:st")).Get<VtVec2fArray>();
-
         // https://graphics.pixar.com/opensubdiv/docs/subdivision_surfaces.html#face-varying-interpolation-rules
-        // HdVtBufferSource pTexcoordSource(TfToken("TextureCoordinateSource"),
-        //                                  VtValue(pSceneDelegate->Get(GetId(), TfToken("primvars:st")).Get<VtVec2fArray>()));
+        HdVtBufferSource pTexcoordSource(TfToken("TextureCoordinateSource"),
+                                         VtValue(pSceneDelegate->Get(GetId(), TfToken("primvars:st")).Get<VtVec2fArray>()));
 
         // Triangule the texture coordinate prim vars.
-        //         VtValue pTexcoordTriangulationResult;
-        //         Check(meshUtil.ComputeTriangulatedFaceVaryingPrimvar(pTexcoordSource.GetData(),
-        //                                                              static_cast<int>(pTexcoordSource.GetNumElements()),
-        //                                                              pTexcoordSource.GetTupleType().type,
-        //                                                              &pTexcoordTriangulationResult),
-        //               "Failed to triangulate texture coordinate list.");
-        //
-        //         // Write back the result.
-        //         texCoords = pTexcoordTriangulationResult.UncheckedGet<VtVec2fArray>();
+        VtValue pTexcoordTriangulationResult;
+        Check(meshUtil.ComputeTriangulatedFaceVaryingPrimvar(pTexcoordSource.GetData(),
+                                                             static_cast<int>(pTexcoordSource.GetNumElements()),
+                                                             pTexcoordSource.GetTupleType().type,
+                                                             &pTexcoordTriangulationResult),
+              "Failed to triangulate texture coordinate list.");
+
+        // Write back the result.
+        texCoords = pTexcoordTriangulationResult.UncheckedGet<VtVec2fArray>();
     }
 
     auto* pResourceRegistry = std::static_pointer_cast<ResourceRegistry>(m_Owner->GetResourceRegistry()).get();
