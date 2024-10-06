@@ -135,9 +135,10 @@ struct Buffer
 
 struct Image
 {
-    VkImage       image           = VK_NULL_HANDLE;
-    VkImageView   imageView       = VK_NULL_HANDLE;
-    VmaAllocation imageAllocation = VK_NULL_HANDLE;
+    VkImage           image           = VK_NULL_HANDLE;
+    VkImageView       imageView       = VK_NULL_HANDLE;
+    VmaAllocation     imageAllocation = VK_NULL_HANDLE;
+    VkImageCreateInfo imageInfo       = {};
 };
 
 // Utility Functions.

@@ -80,10 +80,19 @@ private:
     bool m_RebuildAccelerationStructure { true };
 
     void RebuildAccelerationStructure(FrameContext* pFrameContext);
+    void CreateBrixelizerLatentDeviceResources();
 
     FfxDevice            m_FFXDevice {};
     std::vector<uint8_t> m_FFXBackendScratch;
     FfxInterface         m_FFXInterface {};
+
+    // Latent buffers required by Brixelizer:
+    std::pair<FfxResource, Image>               m_FFXBrixelizerBufferSDFAtlas;
+    std::pair<FfxResource, Buffer>              m_FFXBrixelizerBufferBrickAABB;
+    std::vector<std::pair<FfxResource, Buffer>> m_FFXBrixelizerBufferPerCascadeAABBTree;
+    std::vector<std::pair<FfxResource, Buffer>> m_FFXBrixelizerBufferPerCascadeBrickMap;
+
+    uint32_t             m_FFXBrixelizerCascadeCount {};
     FfxBrixelizerContext m_FFXBrixelizerContext {};
 
     // Resource Descriptors

@@ -271,11 +271,122 @@ PFN_vkVoidFunction VKAPI_PTR CustomVulkanDeviceProcAddr(VkDevice device, const c
     return vkGetDeviceProcAddr(device, pName);
 }
 
+void RenderPass::CreateBrixelizerLatentDeviceResources()
+{
+    // More info here on latent resource allocations:
+    // https://gpuopen.com/manuals/fidelityfx_sdk/fidelityfx_sdk-page_techniques_brixelizer/#resource-creation-for-brixelizer
+
+    // Grab the render context.
+    auto* pRenderContext = m_Owner->GetRenderContext();
+
+    // Generic device-side allocation info.
+    VmaAllocationCreateInfo deviceAllocationInfo = {};
+    deviceAllocationInfo.usage                   = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+
+    // Distance field atlas.
+    // ---------------------------------
+
+    auto* pImageInfo = &m_FFXBrixelizerBufferSDFAtlas.second.imageInfo;
+    {
+        pImageInfo->sType       = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        pImageInfo->imageType   = VK_IMAGE_TYPE_3D;
+        pImageInfo->arrayLayers = 1U;
+        pImageInfo->mipLevels   = 1U;
+        pImageInfo->samples     = VK_SAMPLE_COUNT_1_BIT;
+        pImageInfo->tiling      = VK_IMAGE_TILING_OPTIMAL;
+        pImageInfo->flags       = 0x0;
+        pImageInfo->usage       = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+        pImageInfo->format      = VK_FORMAT_R8_UNORM;
+        pImageInfo->extent      = { FFX_BRIXELIZER_STATIC_CONFIG_SDF_ATLAS_SIZE,
+                                    FFX_BRIXELIZER_STATIC_CONFIG_SDF_ATLAS_SIZE,
+                                    FFX_BRIXELIZER_STATIC_CONFIG_SDF_ATLAS_SIZE };
+    }
+
+    Check(vmaCreateImage(pRenderContext->GetAllocator(),
+                         pImageInfo,
+                         &deviceAllocationInfo,
+                         &m_FFXBrixelizerBufferSDFAtlas.second.image,
+                         &m_FFXBrixelizerBufferSDFAtlas.second.imageAllocation,
+                         nullptr),
+          "Failed to create Brixelizer SDF Atlas.");
+
+    // Wrap the vulkan image into a FidelityFX generic abstraction.
+    m_FFXBrixelizerBufferSDFAtlas.first = ffxGetResourceVK(&m_FFXBrixelizerBufferSDFAtlas.second.image,
+                                                           ffxGetImageResourceDescriptionVK(m_FFXBrixelizerBufferSDFAtlas.second.image, *pImageInfo),
+                                                           L"Brixelizer Distance Field Atlas");
+
+    // Brick AABBs
+    // ----------------------------------
+
+    VkBufferCreateInfo bufferInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+    bufferInfo.size               = FFX_BRIXELIZER_BRICK_AABBS_SIZE;
+    bufferInfo.usage              = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+
+    Check(vmaCreateBuffer(pRenderContext->GetAllocator(),
+                          &bufferInfo,
+                          &deviceAllocationInfo,
+                          &m_FFXBrixelizerBufferBrickAABB.second.buffer,
+                          &m_FFXBrixelizerBufferBrickAABB.second.bufferAllocation,
+                          nullptr),
+          "Failed to create dedicated buffer memory.");
+
+    // Wrap the vulkan image into a FidelityFX generic abstraction.
+    m_FFXBrixelizerBufferBrickAABB.first =
+        ffxGetResourceVK(&m_FFXBrixelizerBufferBrickAABB.second.buffer,
+                         ffxGetBufferResourceDescriptionVK(m_FFXBrixelizerBufferBrickAABB.second.buffer, bufferInfo),
+                         L"Brixelizer Brick AABBs");
+
+    for (uint32_t cascadeIndex = 0U; cascadeIndex < m_FFXBrixelizerCascadeCount; cascadeIndex++)
+    {
+        std::pair<FfxResource, Buffer> cascadeAABBTree;
+        {
+            // Update the size descriptor.
+            bufferInfo.size = FFX_BRIXELIZER_CASCADE_AABB_TREE_SIZE;
+
+            Check(vmaCreateBuffer(pRenderContext->GetAllocator(),
+                                  &bufferInfo,
+                                  &deviceAllocationInfo,
+                                  &cascadeAABBTree.second.buffer,
+                                  &cascadeAABBTree.second.bufferAllocation,
+                                  nullptr),
+                  "Failed to create dedicated buffer memory.");
+        }
+
+        // Wrap the vulkan image into a FidelityFX generic abstraction.
+        cascadeAABBTree.first = ffxGetResourceVK(&cascadeAABBTree.second.buffer,
+                                                 ffxGetBufferResourceDescriptionVK(cascadeAABBTree.second.buffer, bufferInfo),
+                                                 L"Per-Cascade AABB Tree");
+
+        m_FFXBrixelizerBufferPerCascadeAABBTree.push_back(cascadeAABBTree);
+
+        std::pair<FfxResource, Buffer> cascadeBrickMap;
+        {
+            // Update the size descriptor.
+            bufferInfo.size = FFX_BRIXELIZER_CASCADE_BRICK_MAP_SIZE;
+
+            Check(vmaCreateBuffer(pRenderContext->GetAllocator(),
+                                  &bufferInfo,
+                                  &deviceAllocationInfo,
+                                  &cascadeBrickMap.second.buffer,
+                                  &cascadeBrickMap.second.bufferAllocation,
+                                  nullptr),
+                  "Failed to create dedicated buffer memory.");
+        }
+
+        // Wrap the vulkan image into a FidelityFX generic abstraction.
+        cascadeBrickMap.first = ffxGetResourceVK(&cascadeBrickMap.second.buffer,
+                                                 ffxGetBufferResourceDescriptionVK(cascadeBrickMap.second.buffer, bufferInfo),
+                                                 L"Per-Cascade Brick Map");
+
+        m_FFXBrixelizerBufferPerCascadeBrickMap.push_back(cascadeBrickMap);
+    }
+}
+
 // Render Pass Implementation
 // ------------------------------------------------------------
 
 RenderPass::RenderPass(HdRenderIndex* pRenderIndex, const HdRprimCollection& collection, RenderDelegate* pRenderDelegate) :
-    HdRenderPass(pRenderIndex, collection), m_Owner(pRenderDelegate)
+    HdRenderPass(pRenderIndex, collection), m_Owner(pRenderDelegate), m_FFXBrixelizerCascadeCount(4U)
 {
     // Grab the render context.
     auto* pRenderContext = m_Owner->GetRenderContext();
@@ -334,7 +445,7 @@ RenderPass::RenderPass(HdRenderIndex* pRenderIndex, const HdRprimCollection& col
         brixelizerContextDesc.backendInterface = m_FFXInterface;
 
         // Four cascades for now (maybe just one in our case?).
-        brixelizerContextDesc.numCascades = 4U;
+        brixelizerContextDesc.numCascades = m_FFXBrixelizerCascadeCount;
 
         // Configure per-cascade info.
         for (uint32_t cascadeIndex = 0U; cascadeIndex < brixelizerContextDesc.numCascades; cascadeIndex++)
@@ -348,6 +459,8 @@ RenderPass::RenderPass(HdRenderIndex* pRenderIndex, const HdRprimCollection& col
         }
     }
     Check(ffxBrixelizerContextCreate(&brixelizerContextDesc, &m_FFXBrixelizerContext), "Failed to intiliaze a Brixelizer context.");
+
+    CreateBrixelizerLatentDeviceResources();
 }
 
 RenderPass::~RenderPass()
@@ -356,6 +469,22 @@ RenderPass::~RenderPass()
     auto* pRenderContext = m_Owner->GetRenderContext();
 
     vkDeviceWaitIdle(pRenderContext->GetDevice());
+
+    // Release brixelizer resources.
+    {
+        // clang-format off
+
+        vmaDestroyImage(pRenderContext->GetAllocator(),  m_FFXBrixelizerBufferSDFAtlas.second.image,   m_FFXBrixelizerBufferSDFAtlas.second.imageAllocation);
+        vmaDestroyBuffer(pRenderContext->GetAllocator(), m_FFXBrixelizerBufferBrickAABB.second.buffer, m_FFXBrixelizerBufferBrickAABB.second.bufferAllocation);
+
+        for (uint32_t cascadeIndex = 0U; cascadeIndex < m_FFXBrixelizerCascadeCount; cascadeIndex++)
+        {
+            vmaDestroyBuffer(pRenderContext->GetAllocator(), m_FFXBrixelizerBufferPerCascadeAABBTree[cascadeIndex].second.buffer, m_FFXBrixelizerBufferPerCascadeAABBTree[cascadeIndex].second.bufferAllocation);
+            vmaDestroyBuffer(pRenderContext->GetAllocator(), m_FFXBrixelizerBufferPerCascadeBrickMap[cascadeIndex].second.buffer, m_FFXBrixelizerBufferPerCascadeBrickMap[cascadeIndex].second.bufferAllocation);
+        }
+
+        // clang-format on
+    }
 
     Check(ffxBrixelizerContextDestroy(&m_FFXBrixelizerContext), "Failed to destroy Brixelizer context.");
 
@@ -724,6 +853,10 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
 
     if (!frameContext.pResourceRegistry->IsBusy() && m_RebuildAccelerationStructure)
         RebuildAccelerationStructure(&frameContext);
+
+    // Bake the acceleration structure.
+    {
+    }
 
     // 2) Rasterize V-Buffer
     //    Ref: https://jcgt.org/published/0002/02/04/
