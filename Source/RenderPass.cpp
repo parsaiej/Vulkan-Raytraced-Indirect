@@ -336,6 +336,28 @@ void RenderPass::CreateBrixelizerLatentDeviceResources()
                          ffxGetBufferResourceDescriptionVK(m_FFXBrixelizerBufferBrickAABB.second.buffer, bufferInfo),
                          L"Brixelizer Brick AABBs");
 
+    // Device-side Scratch Memory
+    // -----------------------------------
+
+    bufferInfo.size = m_FFXDeviceScratchSizeBytes;
+
+    Check(vmaCreateBuffer(pRenderContext->GetAllocator(),
+                          &bufferInfo,
+                          &deviceAllocationInfo,
+                          &m_FFXBrixelizerBufferDeviceScratch.second.buffer,
+                          &m_FFXBrixelizerBufferDeviceScratch.second.bufferAllocation,
+                          nullptr),
+          "Failed to create dedicated buffer memory.");
+
+    // Wrap the vulkan image into a FidelityFX generic abstraction.
+    m_FFXBrixelizerBufferDeviceScratch.first =
+        ffxGetResourceVK(&m_FFXBrixelizerBufferDeviceScratch.second.buffer,
+                         ffxGetBufferResourceDescriptionVK(m_FFXBrixelizerBufferDeviceScratch.second.buffer, bufferInfo),
+                         L"Brixelizer Device Scratch Memory");
+
+    // Per-cascade Resources
+    // -----------------------------------
+
     for (uint32_t cascadeIndex = 0U; cascadeIndex < m_FFXBrixelizerCascadeCount; cascadeIndex++)
     {
         std::pair<FfxResource, Buffer> cascadeAABBTree;
@@ -386,7 +408,8 @@ void RenderPass::CreateBrixelizerLatentDeviceResources()
 // ------------------------------------------------------------
 
 RenderPass::RenderPass(HdRenderIndex* pRenderIndex, const HdRprimCollection& collection, RenderDelegate* pRenderDelegate) :
-    HdRenderPass(pRenderIndex, collection), m_Owner(pRenderDelegate), m_FFXBrixelizerCascadeCount(4U)
+    HdRenderPass(pRenderIndex, collection), m_Owner(pRenderDelegate), m_FFXDeviceScratchSizeBytes(1024U * 1024 * 1024),
+    m_FFXBrixelizerCascadeCount(4U)
 {
     // Grab the render context.
     auto* pRenderContext = m_Owner->GetRenderContext();
@@ -436,6 +459,7 @@ RenderPass::RenderPass(HdRenderIndex* pRenderIndex, const HdRprimCollection& col
     }
     m_FFXDevice = ffxGetDeviceVK(&ffxDeviceContext);
 
+    // I have no idea why host scratch memory is needed...
     m_FFXBackendScratch.resize(32LL * 1024 * 1024); // 32mb.
     Check(ffxGetInterfaceVK(&m_FFXInterface, m_FFXDevice, m_FFXBackendScratch.data(), m_FFXBackendScratch.size(), 1U),
           "Failed to resolve a FideltyFX VK backend.");
@@ -460,6 +484,8 @@ RenderPass::RenderPass(HdRenderIndex* pRenderIndex, const HdRprimCollection& col
     }
     Check(ffxBrixelizerContextCreate(&brixelizerContextDesc, &m_FFXBrixelizerContext), "Failed to intiliaze a Brixelizer context.");
 
+    m_FFXBrixelizerBakedUpdateDesc = std::make_unique<FfxBrixelizerBakedUpdateDescription>();
+
     CreateBrixelizerLatentDeviceResources();
 }
 
@@ -476,6 +502,7 @@ RenderPass::~RenderPass()
 
         vmaDestroyImage(pRenderContext->GetAllocator(),  m_FFXBrixelizerBufferSDFAtlas.second.image,   m_FFXBrixelizerBufferSDFAtlas.second.imageAllocation);
         vmaDestroyBuffer(pRenderContext->GetAllocator(), m_FFXBrixelizerBufferBrickAABB.second.buffer, m_FFXBrixelizerBufferBrickAABB.second.bufferAllocation);
+        vmaDestroyBuffer(pRenderContext->GetAllocator(), m_FFXBrixelizerBufferDeviceScratch.second.buffer, m_FFXBrixelizerBufferDeviceScratch.second.bufferAllocation);
 
         for (uint32_t cascadeIndex = 0U; cascadeIndex < m_FFXBrixelizerCascadeCount; cascadeIndex++)
         {
@@ -854,8 +881,48 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
     if (!frameContext.pResourceRegistry->IsBusy() && m_RebuildAccelerationStructure)
         RebuildAccelerationStructure(&frameContext);
 
-    // Bake the acceleration structure.
+    // Dispatch Brixelizer update.
+    if (!m_RebuildAccelerationStructure)
     {
+        size_t requiredDeviceScratchSize = 0;
+
+        FfxBrixelizerUpdateDescription brixelizerUpdateDesc = {};
+        {
+            brixelizerUpdateDesc.frameIndex = static_cast<uint32_t>(frameContext.pFrame->frameIndex);
+
+            // Tuning parameters.(Copied from the sample for now -- needs tuning).
+            brixelizerUpdateDesc.maxReferences    = 32 * (1 << 20);
+            brixelizerUpdateDesc.maxBricksPerBake = 1 << 14;
+            brixelizerUpdateDesc.triangleSwapSize = 300 * (1 << 20);
+
+            brixelizerUpdateDesc.outScratchBufferSize = &requiredDeviceScratchSize;
+
+            // Forward latent resources.
+            brixelizerUpdateDesc.resources.sdfAtlas   = m_FFXBrixelizerBufferSDFAtlas.first;
+            brixelizerUpdateDesc.resources.brickAABBs = m_FFXBrixelizerBufferBrickAABB.first;
+
+            for (uint32_t cascadeIndex = 0U; cascadeIndex < m_FFXBrixelizerCascadeCount; cascadeIndex++)
+            {
+                brixelizerUpdateDesc.resources.cascadeResources[cascadeIndex].aabbTree = // NOLINT
+                    m_FFXBrixelizerBufferPerCascadeAABBTree[cascadeIndex].first;         // NOLINT
+
+                brixelizerUpdateDesc.resources.cascadeResources[cascadeIndex].brickMap = // NOLINT
+                    m_FFXBrixelizerBufferPerCascadeBrickMap[cascadeIndex].first;         // NOLINT
+            }
+        }
+
+        Check(ffxBrixelizerBakeUpdate(&m_FFXBrixelizerContext, &brixelizerUpdateDesc, m_FFXBrixelizerBakedUpdateDesc.get()),
+              "Failed to bake a Brixelizer update description.");
+
+        // Verify that we have enough scratch memory, otherwise fatally crash the app.
+        Check(requiredDeviceScratchSize < m_FFXDeviceScratchSizeBytes, "The Brixilizer scratch buffer is not large enough.");
+
+        // Dispatch the update.
+        Check(ffxBrixelizerUpdate(&m_FFXBrixelizerContext,
+                                  m_FFXBrixelizerBakedUpdateDesc.get(),
+                                  m_FFXBrixelizerBufferDeviceScratch.first,
+                                  &frameContext.pFrame->cmd),
+              "Failed to dispatch the Brixelizer update.");
     }
 
     // 2) Rasterize V-Buffer

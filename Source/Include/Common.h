@@ -117,6 +117,7 @@ struct FrameParams
     VkImage         backBuffer;
     VkImageView     backBufferView;
     double          deltaTime;
+    uint64_t        frameIndex;
 };
 
 // Collection of vulkan primitives to hold a buffer.

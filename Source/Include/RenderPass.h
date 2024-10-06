@@ -89,11 +89,16 @@ private:
     // Latent buffers required by Brixelizer:
     std::pair<FfxResource, Image>               m_FFXBrixelizerBufferSDFAtlas;
     std::pair<FfxResource, Buffer>              m_FFXBrixelizerBufferBrickAABB;
+    std::pair<FfxResource, Buffer>              m_FFXBrixelizerBufferDeviceScratch;
     std::vector<std::pair<FfxResource, Buffer>> m_FFXBrixelizerBufferPerCascadeAABBTree;
     std::vector<std::pair<FfxResource, Buffer>> m_FFXBrixelizerBufferPerCascadeBrickMap;
 
+    uint32_t             m_FFXDeviceScratchSizeBytes {};
     uint32_t             m_FFXBrixelizerCascadeCount {};
     FfxBrixelizerContext m_FFXBrixelizerContext {};
+
+    // This type is stackoverflow-prone due to its gigantic size, put it on the heap.
+    std::unique_ptr<FfxBrixelizerBakedUpdateDescription> m_FFXBrixelizerBakedUpdateDesc;
 
     // Resource Descriptors
     // ---------------------------------------

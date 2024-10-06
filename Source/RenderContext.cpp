@@ -319,7 +319,8 @@ void RenderContext::Dispatch(const std::function<void(FrameParams)>& commandsFun
         FrameParams frameParams = { vkCurrentCommandBuffer,
                                     m_VKSwapchainImages[vkCurrentSwapchainImageIndex],
                                     m_VKSwapchainImageViews[vkCurrentSwapchainImageIndex],
-                                    deltaTime.count() };
+                                    deltaTime.count(),
+                                    frameIndex };
 
         PROFILE_START("Process Frame");
 
