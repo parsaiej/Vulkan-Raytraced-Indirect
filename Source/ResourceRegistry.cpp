@@ -90,7 +90,7 @@ ResourceRegistry::ResourceRegistry(RenderContext* pRenderContext) :
 
     // Create default resources.
     {
-        VkDeviceSize defaultResourceBytes = static_cast<VkDeviceSize>(4LL * 4 * sizeof(float));
+        auto defaultResourceBytes = static_cast<VkDeviceSize>(4LL * 4 * sizeof(float));
 
         Buffer stagingBuffer;
         m_RenderContext->CreateStagingBuffer(defaultResourceBytes, &stagingBuffer);

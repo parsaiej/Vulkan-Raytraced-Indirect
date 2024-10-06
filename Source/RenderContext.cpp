@@ -420,6 +420,9 @@ void RenderContext::CreateDeviceBufferWithData(CreateDeviceBufferWithDataParams&
     Check(vmaCreateBuffer(GetAllocator(), &bufferInfo, &allocInfo, &params.pBufferDevice->buffer, &params.pBufferDevice->bufferAllocation, nullptr),
           "Failed to create dedicated buffer memory.");
 
+    // Keep information about the buffer.
+    params.pBufferDevice->bufferInfo = bufferInfo;
+
     // Copy Host -> Staging Memory.
     // -----------------------------------------------------
 

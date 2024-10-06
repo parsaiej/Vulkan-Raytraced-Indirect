@@ -31,6 +31,15 @@ inline void Check(bool a, const char* b)
     }
 }
 
+inline void Check(FfxErrorCode a, const char* b)
+{
+    if (a != FFX_OK)
+    {
+        spdlog::critical(b);
+        exit(1);
+    }
+}
+
 #else
 
 inline void Check(VkResult a, const char* b)
@@ -115,9 +124,10 @@ struct FrameParams
 
 struct Buffer
 {
-    VkBuffer      buffer           = VK_NULL_HANDLE;
-    VkBufferView  bufferView       = VK_NULL_HANDLE;
-    VmaAllocation bufferAllocation = VK_NULL_HANDLE;
+    VkBuffer           buffer           = VK_NULL_HANDLE;
+    VkBufferView       bufferView       = VK_NULL_HANDLE;
+    VmaAllocation      bufferAllocation = VK_NULL_HANDLE;
+    VkBufferCreateInfo bufferInfo       = {};
 };
 
 // Collection of vulkan primitives to hold an image.

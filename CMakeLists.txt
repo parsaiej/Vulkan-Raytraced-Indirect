@@ -47,6 +47,17 @@ if (${USE_SUPERLUMINAL})
     set(SuperluminalAPI_DIR $ENV{SUPERLUMINAL_API_DIR})
 endif()
 
+# Configure Superluminal Performance
+# --------------------------------
+
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(FFX_BACKEND_LIB    ${CMAKE_SOURCE_DIR}/External/FidelityFX/bin/debug/ffx_backend_vk_x64d.lib)
+    set(FFX_BRIXELIZER_LIB ${CMAKE_SOURCE_DIR}/External/FidelityFX/bin/debug/ffx_brixelizer_x64d.lib)
+elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
+    set(FFX_BACKEND_LIB    ${CMAKE_SOURCE_DIR}/External/FidelityFX/bin/release/ffx_backend_vk_x64.lib)
+    set(FFX_BRIXELIZER_LIB ${CMAKE_SOURCE_DIR}/External/FidelityFX/bin/release/ffx_brixelizer_x64.lib)
+endif()
+
 # Packages
 # --------------------------------
 
@@ -131,8 +142,8 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     ${PXR_LIBRARIES}
 
     # FidelityFX SDK (For brixelizer)
-    ${CMAKE_SOURCE_DIR}/External/FidelityFX/bin/ffx_backend_vk_x64.lib
-    ${CMAKE_SOURCE_DIR}/External/FidelityFX/bin/ffx_brixelizer_x64.lib
+    ${FFX_BACKEND_LIB}
+    ${FFX_BRIXELIZER_LIB}
 )
 
 if (${USE_SUPERLUMINAL})

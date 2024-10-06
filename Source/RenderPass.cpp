@@ -259,6 +259,18 @@ void RenderPass::DebugPassCreate(RenderContext* pRenderContext)
     LoadShader(ShaderID::DebugFrag, "Debug.frag.spv", "Frag", debugShaderInfo);
 }
 
+PFN_vkVoidFunction VKAPI_PTR CustomVulkanDeviceProcAddr(VkDevice device, const char* pName)
+{
+    // Brixelizer uses an old version of this function:
+    // https://github.com/GPUOpen-LibrariesAndSDKs/FidelityFX-SDK/issues/73
+    // So we patch it with the correct one.
+    if (strcmp(pName, "vkGetBufferMemoryRequirements2KHR") == 0)
+        return reinterpret_cast<PFN_vkVoidFunction>(vkGetBufferMemoryRequirements2);
+
+    // Forward as normal.
+    return vkGetDeviceProcAddr(device, pName);
+}
+
 // Render Pass Implementation
 // ------------------------------------------------------------
 
@@ -309,20 +321,31 @@ RenderPass::RenderPass(HdRenderIndex* pRenderIndex, const HdRprimCollection& col
     {
         ffxDeviceContext.vkDevice         = pRenderContext->GetDevice();
         ffxDeviceContext.vkPhysicalDevice = pRenderContext->GetDevicePhysical();
-        ffxDeviceContext.vkDeviceProcAddr = vkGetDeviceProcAddr;
+        ffxDeviceContext.vkDeviceProcAddr = CustomVulkanDeviceProcAddr;
     }
     m_FFXDevice = ffxGetDeviceVK(&ffxDeviceContext);
 
-    ffxGetInterfaceVK(&m_FFXInterface, m_FFXDevice, nullptr, 0U, 0U);
+    m_FFXBackendScratch.resize(32LL * 1024 * 1024); // 32mb.
+    Check(ffxGetInterfaceVK(&m_FFXInterface, m_FFXDevice, m_FFXBackendScratch.data(), m_FFXBackendScratch.size(), 1U),
+          "Failed to resolve a FideltyFX VK backend.");
 
     FfxBrixelizerContextDescription brixelizerContextDesc = {};
     {
-        // Need to be where the cockpit seat is / current camera location.
-        brixelizerContextDesc.sdfCenter[0]     = 0;
-        brixelizerContextDesc.sdfCenter[0]     = 0;
-        brixelizerContextDesc.sdfCenter[0]     = 0;
-        brixelizerContextDesc.numCascades      = 4U;
         brixelizerContextDesc.backendInterface = m_FFXInterface;
+
+        // Four cascades for now (maybe just one in our case?).
+        brixelizerContextDesc.numCascades = 4U;
+
+        // Configure per-cascade info.
+        for (uint32_t cascadeIndex = 0U; cascadeIndex < brixelizerContextDesc.numCascades; cascadeIndex++)
+        {
+            auto* pCascadeDesc = &brixelizerContextDesc.cascadeDescs[cascadeIndex]; // NOLINT
+
+            pCascadeDesc->flags = FFX_BRIXELIZER_CASCADE_STATIC;
+
+            // Double the voxel size ever cascade.
+            pCascadeDesc->voxelSize = 4.0F * (static_cast<float>(cascadeIndex + 1) / static_cast<float>(brixelizerContextDesc.numCascades));
+        }
     }
     Check(ffxBrixelizerContextCreate(&brixelizerContextDesc, &m_FFXBrixelizerContext), "Failed to intiliaze a Brixelizer context.");
 }
@@ -595,6 +618,88 @@ void RenderPass::DebugPassExecute(FrameContext* pFrameContext)
                             VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT);
 }
 
+void RenderPass::RebuildAccelerationStructure(FrameContext* pFrameContext)
+{
+    PROFILE_START("Build Acceleration Structure");
+
+    auto& drawItems = pFrameContext->pResourceRegistry->GetDrawItems();
+
+    if (drawItems.size() == 0)
+        return;
+
+    // 1) Register instance buffer bindings
+    //    Should pre-allocate these to avoid frame-time mallocs
+    // ---------------------------------------------
+
+    // Combined list of descriptions for vertex and index buffers.
+    std::vector<FfxBrixelizerBufferDescription> instanceBufferDescs(2U * drawItems.size());
+
+    // List of acceleration structure instance data.
+    std::vector<FfxBrixelizerInstanceDescription> instanceDescs(drawItems.size());
+
+    // 2) Register instance buffer bindings
+    // ---------------------------------------------
+
+    for (uint32_t drawItemIndex = 0U; drawItemIndex < drawItems.size(); drawItemIndex++)
+    {
+        const auto& drawItem = drawItems.at(drawItemIndex);
+
+        // Index
+        instanceBufferDescs[2U * drawItemIndex + 0U].outIndex = &instanceDescs.at(drawItemIndex).indexBuffer;
+        instanceBufferDescs[2U * drawItemIndex + 0U].buffer =
+            ffxGetResourceVK(drawItem.bufferI.buffer,
+                             ffxGetBufferResourceDescriptionVK(drawItem.bufferI.buffer, drawItem.bufferI.bufferInfo),
+                             L"Brixelizer Buffer");
+
+        // Vertex
+        instanceBufferDescs[2U * drawItemIndex + 1U].outIndex = &instanceDescs.at(drawItemIndex).vertexBuffer;
+        instanceBufferDescs[2U * drawItemIndex + 1U].buffer =
+            ffxGetResourceVK(drawItem.bufferV.buffer,
+                             ffxGetBufferResourceDescriptionVK(drawItem.bufferV.buffer, drawItem.bufferV.bufferInfo),
+                             L"Brixelizer Buffer");
+    }
+
+    Check(ffxBrixelizerRegisterBuffers(&m_FFXBrixelizerContext, instanceBufferDescs.data(), static_cast<uint32_t>(instanceBufferDescs.size())),
+          "Failed to register draw item buffers to Brixelizer acceleration structure.");
+
+    // 3) Create instances from draw items.
+    // ---------------------------------------------
+
+    for (uint32_t drawItemIndex = 0U; drawItemIndex < drawItems.size(); drawItemIndex++)
+    {
+        auto& drawItem = drawItems.at(drawItemIndex);
+
+        auto* pDesc = &instanceDescs.at(drawItemIndex);
+
+        // Configure the acceleration structure instance.
+        // NOTE: Vertex and index buffer indices where set in the prior pass.
+        pDesc->maxCascade         = 4U;
+        pDesc->aabb               = drawItem.pMesh->GetAABB();
+        pDesc->triangleCount      = drawItem.indexCount / 3U;
+        pDesc->indexFormat        = FFX_INDEX_TYPE_UINT32;
+        pDesc->indexBufferOffset  = 0U;
+        pDesc->vertexCount        = static_cast<uint32_t>(drawItem.bufferV.bufferInfo.size) / sizeof(GfVec3f);
+        pDesc->vertexStride       = sizeof(GfVec3f);
+        pDesc->vertexBufferOffset = 0U;
+        pDesc->vertexFormat       = FFX_SURFACE_FORMAT_R32G32B32_FLOAT;
+        pDesc->flags              = FFX_BRIXELIZER_INSTANCE_FLAG_NONE;
+
+        // Copy the transform.
+        memcpy(&pDesc->transform[0], &drawItem.pMesh->GetLocalToWorld3x4()[0], sizeof(FfxFloat32x3x4));
+
+        // Update the draw item with the instance ID inside brixelizer.
+        pDesc->outInstanceID = &drawItem.brixelizerID;
+    }
+
+    Check(ffxBrixelizerCreateInstances(&m_FFXBrixelizerContext, instanceDescs.data(), static_cast<uint32_t>(instanceDescs.size())),
+          "Failed to add draw item to Brixelizer acceleration structure.");
+
+    // Done.
+    m_RebuildAccelerationStructure = false;
+
+    PROFILE_END;
+}
+
 void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, const TfTokenVector& renderTags)
 {
     FrameContext frameContext {};
@@ -616,6 +721,9 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
                             VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT);
 
     // 1) New Frame
+
+    if (!frameContext.pResourceRegistry->IsBusy() && m_RebuildAccelerationStructure)
+        RebuildAccelerationStructure(&frameContext);
 
     // 2) Rasterize V-Buffer
     //    Ref: https://jcgt.org/published/0002/02/04/

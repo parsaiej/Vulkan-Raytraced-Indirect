@@ -34,6 +34,12 @@ void Mesh::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParams, H
     VtVec3fArray pPoints;
     SafeGet(HdTokens->points, pPoints);
 
+    auto extents = pSceneDelegate->Get(GetId(), TfToken("extent")).UncheckedGet<VtVec3fArray>();
+
+    // Extract AABB (needed by Brixelizer acceleration structure instances).
+    memcpy(&m_AABB.min[0], extents[0].data(), 3U * sizeof(float));
+    memcpy(&m_AABB.max[0], extents[1].data(), 3U * sizeof(float));
+
     if (pPoints.empty())
     {
         // Early exit on mesh prims with invalid topology.
@@ -101,6 +107,9 @@ void Mesh::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParams, H
 
     // Get the world matrix.
     m_LocalToWorld = GfMatrix4f(pSceneDelegate->GetTransform(GetId()));
+
+    // Copy everything except the final row.
+    memcpy(&m_LocalToWorld3x4, &m_LocalToWorld, sizeof(FfxFloat32x3x4));
 
     // Clear the dirty bits.
     *pDirtyBits &= ~HdChangeTracker::AllSceneDirtyBits;

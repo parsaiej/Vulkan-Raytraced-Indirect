@@ -17,6 +17,10 @@ public:
     inline const GfMatrix4f& GetLocalToWorld() const { return m_LocalToWorld; }
     inline const size_t&     GetMaterialHash() const { return m_MaterialHash; }
 
+    // Brixelizer utility.
+    inline const FfxBrixelizerAABB& GetAABB() const { return m_AABB; }
+    inline const FfxFloat32x3x4&    GetLocalToWorld3x4() const { return m_LocalToWorld3x4; }
+
 protected:
 
     HdDirtyBits _PropagateDirtyBits(HdDirtyBits bits) const override;
@@ -30,7 +34,11 @@ private:
     // (The parent class does not seem to).
     size_t m_MaterialHash;
 
-    GfMatrix4f m_LocalToWorld {};
+    // For Brixelizer acceleration structure.
+    FfxBrixelizerAABB m_AABB;
+
+    GfMatrix4f     m_LocalToWorld {};
+    FfxFloat32x3x4 m_LocalToWorld3x4 {};
 };
 
 #endif

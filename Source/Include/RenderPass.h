@@ -77,7 +77,12 @@ private:
     // FidelityFX Primitives
     // ---------------------------------------
 
+    bool m_RebuildAccelerationStructure { true };
+
+    void RebuildAccelerationStructure(FrameContext* pFrameContext);
+
     FfxDevice            m_FFXDevice {};
+    std::vector<uint8_t> m_FFXBackendScratch;
     FfxInterface         m_FFXInterface {};
     FfxBrixelizerContext m_FFXBrixelizerContext {};
 

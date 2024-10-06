@@ -16,6 +16,9 @@ struct DrawItem
     Buffer bufferI;
     Buffer bufferV;
     Buffer bufferST;
+
+    // For Brixelizer support.
+    FfxBrixelizerInstanceID brixelizerID;
 };
 
 struct DeviceMaterial
@@ -72,8 +75,8 @@ public:
     void PushDrawItemRequest(DrawItemRequest& request);
     void PushMaterialRequest(MaterialRequest& request);
 
-    inline const std::vector<DrawItem>& GetDrawItems() { return m_DrawItems; }
-    inline bool                         IsBusy() { return m_CommitTaskBusy.load(); }
+    inline std::vector<DrawItem>& GetDrawItems() { return m_DrawItems; }
+    inline bool                   IsBusy() { return m_CommitTaskBusy.load(); }
 
     inline const VkDescriptorSetLayout& GetDrawItemDataDescriptorLayout() { return m_DrawItemDataDescriptorLayout; }
     inline const VkDescriptorSet&       GetDrawItemDataDescriptorSet() { return m_DrawItemDataDescriptorSet; }
