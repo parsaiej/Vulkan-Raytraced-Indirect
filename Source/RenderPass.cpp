@@ -921,7 +921,7 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
         Check(ffxBrixelizerUpdate(&m_FFXBrixelizerContext,
                                   m_FFXBrixelizerBakedUpdateDesc.get(),
                                   m_FFXBrixelizerBufferDeviceScratch.first,
-                                  &frameContext.pFrame->cmd),
+                                  frameContext.pFrame->cmd),
               "Failed to dispatch the Brixelizer update.");
     }
 
