@@ -295,7 +295,7 @@ void RenderPass::CreateBrixelizerLatentDeviceResources()
         pImageInfo->samples     = VK_SAMPLE_COUNT_1_BIT;
         pImageInfo->tiling      = VK_IMAGE_TILING_OPTIMAL;
         pImageInfo->flags       = 0x0;
-        pImageInfo->usage       = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+        pImageInfo->usage       = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
         pImageInfo->format      = VK_FORMAT_R8_UNORM;
         pImageInfo->extent      = { FFX_BRIXELIZER_STATIC_CONFIG_SDF_ATLAS_SIZE,
                                     FFX_BRIXELIZER_STATIC_CONFIG_SDF_ATLAS_SIZE,
