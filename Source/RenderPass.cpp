@@ -311,7 +311,7 @@ void RenderPass::CreateBrixelizerLatentDeviceResources()
           "Failed to create Brixelizer SDF Atlas.");
 
     // Wrap the vulkan image into a FidelityFX generic abstraction.
-    m_FFXBrixelizerBufferSDFAtlas.first = ffxGetResourceVK(&m_FFXBrixelizerBufferSDFAtlas.second.image,
+    m_FFXBrixelizerBufferSDFAtlas.first = ffxGetResourceVK(m_FFXBrixelizerBufferSDFAtlas.second.image,
                                                            ffxGetImageResourceDescriptionVK(m_FFXBrixelizerBufferSDFAtlas.second.image, *pImageInfo),
                                                            L"Brixelizer Distance Field Atlas");
 
@@ -332,7 +332,7 @@ void RenderPass::CreateBrixelizerLatentDeviceResources()
 
     // Wrap the vulkan image into a FidelityFX generic abstraction.
     m_FFXBrixelizerBufferBrickAABB.first =
-        ffxGetResourceVK(&m_FFXBrixelizerBufferBrickAABB.second.buffer,
+        ffxGetResourceVK(m_FFXBrixelizerBufferBrickAABB.second.buffer,
                          ffxGetBufferResourceDescriptionVK(m_FFXBrixelizerBufferBrickAABB.second.buffer, bufferInfo),
                          L"Brixelizer Brick AABBs");
 
@@ -351,7 +351,7 @@ void RenderPass::CreateBrixelizerLatentDeviceResources()
 
     // Wrap the vulkan image into a FidelityFX generic abstraction.
     m_FFXBrixelizerBufferDeviceScratch.first =
-        ffxGetResourceVK(&m_FFXBrixelizerBufferDeviceScratch.second.buffer,
+        ffxGetResourceVK(m_FFXBrixelizerBufferDeviceScratch.second.buffer,
                          ffxGetBufferResourceDescriptionVK(m_FFXBrixelizerBufferDeviceScratch.second.buffer, bufferInfo),
                          L"Brixelizer Device Scratch Memory");
 
@@ -375,7 +375,7 @@ void RenderPass::CreateBrixelizerLatentDeviceResources()
         }
 
         // Wrap the vulkan image into a FidelityFX generic abstraction.
-        cascadeAABBTree.first = ffxGetResourceVK(&cascadeAABBTree.second.buffer,
+        cascadeAABBTree.first = ffxGetResourceVK(cascadeAABBTree.second.buffer,
                                                  ffxGetBufferResourceDescriptionVK(cascadeAABBTree.second.buffer, bufferInfo),
                                                  L"Per-Cascade AABB Tree");
 
@@ -396,7 +396,7 @@ void RenderPass::CreateBrixelizerLatentDeviceResources()
         }
 
         // Wrap the vulkan image into a FidelityFX generic abstraction.
-        cascadeBrickMap.first = ffxGetResourceVK(&cascadeBrickMap.second.buffer,
+        cascadeBrickMap.first = ffxGetResourceVK(cascadeBrickMap.second.buffer,
                                                  ffxGetBufferResourceDescriptionVK(cascadeBrickMap.second.buffer, bufferInfo),
                                                  L"Per-Cascade Brick Map");
 
@@ -460,8 +460,8 @@ RenderPass::RenderPass(HdRenderIndex* pRenderIndex, const HdRprimCollection& col
     m_FFXDevice = ffxGetDeviceVK(&ffxDeviceContext);
 
     // I have no idea why host scratch memory is needed...
-    m_FFXBackendScratch.resize(32LL * 1024 * 1024); // 32mb.
-    Check(ffxGetInterfaceVK(&m_FFXInterface, m_FFXDevice, m_FFXBackendScratch.data(), m_FFXBackendScratch.size(), 1U),
+    m_FFXBackendScratch.resize(512LL * 1024 * 1024); // 32mb.
+    Check(ffxGetInterfaceVK(&m_FFXInterface, m_FFXDevice, m_FFXBackendScratch.data(), m_FFXBackendScratch.size(), 8U),
           "Failed to resolve a FideltyFX VK backend.");
 
     FfxBrixelizerContextDescription brixelizerContextDesc = {};

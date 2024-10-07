@@ -83,8 +83,8 @@ private:
     void CreateBrixelizerLatentDeviceResources();
 
     FfxDevice            m_FFXDevice {};
-    std::vector<uint8_t> m_FFXBackendScratch;
     FfxInterface         m_FFXInterface {};
+    std::vector<uint8_t> m_FFXBackendScratch;
 
     // Latent buffers required by Brixelizer:
     std::pair<FfxResource, Image>               m_FFXBrixelizerBufferSDFAtlas;
