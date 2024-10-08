@@ -910,26 +910,6 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
     {
         size_t requiredDeviceScratchSize = 0;
 
-        FfxBrixelizerDebugVisualizationDescription brixelizerDebugInfo = {};
-        {
-            brixelizerDebugInfo.commandList       = frameContext.pFrame->cmd;
-            brixelizerDebugInfo.debugState        = FfxBrixelizerTraceDebugModes::FFX_BRIXELIZER_TRACE_DEBUG_MODE_ITERATIONS;
-            brixelizerDebugInfo.startCascadeIndex = 0U;
-            brixelizerDebugInfo.endCascadeIndex   = m_FFXBrixelizerCascadeCount - 1;
-            brixelizerDebugInfo.sdfSolveEps       = 0.5F;
-            brixelizerDebugInfo.tMin              = 0.0F;
-            brixelizerDebugInfo.tMax              = 1000.0F;
-            brixelizerDebugInfo.output            = m_FFXBrixelizerDebugOutput;
-            brixelizerDebugInfo.renderWidth       = kWindowWidth;
-            brixelizerDebugInfo.renderHeight      = kWindowHeight;
-
-            auto matrivIV = GfMatrix4f(frameContext.pPassState->GetWorldToViewMatrix()).GetInverse();
-            auto matrixIP = GfMatrix4f(frameContext.pPassState->GetProjectionMatrix()).GetInverse();
-
-            memcpy(&brixelizerDebugInfo.inverseViewMatrix[0], matrivIV.data(), sizeof(matrivIV));
-            memcpy(&brixelizerDebugInfo.inverseProjectionMatrix[0], matrixIP.data(), sizeof(matrixIP));
-        }
-
         FfxBrixelizerUpdateDescription brixelizerUpdateDesc = {};
         {
             brixelizerUpdateDesc.frameIndex = static_cast<uint32_t>(frameContext.pFrame->frameIndex);
@@ -945,8 +925,7 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
             brixelizerUpdateDesc.sdfCenter[1] = matrixV[1][3]; // NOLINT
             brixelizerUpdateDesc.sdfCenter[2] = matrixV[2][3]; // NOLINT
 
-            brixelizerUpdateDesc.outScratchBufferSize   = &requiredDeviceScratchSize;
-            brixelizerUpdateDesc.debugVisualizationDesc = &brixelizerDebugInfo;
+            brixelizerUpdateDesc.outScratchBufferSize = &requiredDeviceScratchSize;
 
             // Forward latent resources.
             brixelizerUpdateDesc.resources.sdfAtlas   = m_FFXBrixelizerBufferSDFAtlas.first;
@@ -961,6 +940,36 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
                     m_FFXBrixelizerBufferPerCascadeBrickMap[cascadeIndex].first;         // NOLINT
             }
         }
+
+        FfxBrixelizerDebugVisualizationDescription brixelizerDebugInfo = {};
+
+        if (frameContext.debugMode >= DebugMode::BrixelizerGrad)
+        {
+            brixelizerDebugInfo.commandList = frameContext.pFrame->cmd;
+
+            brixelizerDebugInfo.debugState = frameContext.debugMode != DebugMode::BrixelizerGrad
+                                                 ? FfxBrixelizerTraceDebugModes::FFX_BRIXELIZER_TRACE_DEBUG_MODE_ITERATIONS
+                                                 : FfxBrixelizerTraceDebugModes::FFX_BRIXELIZER_TRACE_DEBUG_MODE_GRAD;
+
+            brixelizerDebugInfo.startCascadeIndex = 0U;
+            brixelizerDebugInfo.endCascadeIndex   = m_FFXBrixelizerCascadeCount - 1;
+            brixelizerDebugInfo.sdfSolveEps       = 0.5F;
+            brixelizerDebugInfo.tMin              = 0.0F;
+            brixelizerDebugInfo.tMax              = 1000.0F;
+            brixelizerDebugInfo.output            = m_FFXBrixelizerDebugOutput;
+            brixelizerDebugInfo.renderWidth       = kWindowWidth;
+            brixelizerDebugInfo.renderHeight      = kWindowHeight;
+
+            auto matrivIV = GfMatrix4f(frameContext.pPassState->GetWorldToViewMatrix()).GetInverse();
+            auto matrixIP = GfMatrix4f(frameContext.pPassState->GetProjectionMatrix()).GetInverse();
+
+            memcpy(&brixelizerDebugInfo.inverseViewMatrix[0], matrivIV.data(), sizeof(matrivIV));
+            memcpy(&brixelizerDebugInfo.inverseProjectionMatrix[0], matrixIP.data(), sizeof(matrixIP));
+
+            brixelizerUpdateDesc.debugVisualizationDesc = &brixelizerDebugInfo;
+        }
+        else
+            brixelizerUpdateDesc.debugVisualizationDesc = nullptr;
 
         Check(ffxBrixelizerBakeUpdate(&m_FFXBrixelizerContext, &brixelizerUpdateDesc, m_FFXBrixelizerBakedUpdateDesc.get()),
               "Failed to bake a Brixelizer update description.");
@@ -1002,8 +1011,8 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
     //    TODO(parsa): Use https://github.com/zeux/meshoptimizer to produce optimized meshlets
     //                 that can be culled in a mesh shader.
 
-    // if (!frameContext.pResourceRegistry->IsBusy())
-    //     VisibilityPassExecute(&frameContext);
+    if (!frameContext.pResourceRegistry->IsBusy())
+        VisibilityPassExecute(&frameContext);
 
     // 3) Material Pass
 
@@ -1011,10 +1020,10 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
 
     // 5) Lighting Pass
 
-    // 6) Debug
+    // 6) Debug (non-Brixelizer)
 
-    // if (frameContext.debugMode != DebugMode::None)
-    //     DebugPassExecute(&frameContext);
+    if (frameContext.debugMode > DebugMode::None && frameContext.debugMode < DebugMode::BrixelizerGrad)
+        DebugPassExecute(&frameContext);
 
     // Copy the internal color attachment to back buffer.
 

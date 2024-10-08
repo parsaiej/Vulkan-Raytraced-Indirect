@@ -158,7 +158,7 @@ int main()
     const char* kDebugScenePaths[] = { "C:\\Development\\OpenUSD_Install_Release\\resources\\flattened_chess_set.usd",
                                        "C:\\Development\\hercules\\cockpit.usd" };
 
-    static int s_DebugModeIndex = 0U; // NOLINT
+    static int s_DebugModeIndex = RenderPass::DebugMode::BarycentricCoordinate; // NOLINT
 
     std::jthread stageLoadingThread;
 
@@ -191,7 +191,9 @@ int main()
 
             ImGui::SameLine();
 
-            const char* kModeNames[] = { "None", "MeshID", "PrimitiveID", "BarycentricCoordinate", "Depth", "Albedo" };
+            const char* kModeNames[] = { "None",  "MeshID", "PrimitiveID",         "BarycentricCoordinate",
+                                         "Depth", "Albedo", "Brixelizer Gradient", "Brixelizer Iterations" };
+
             ImGui::Combo("Debug", &s_DebugModeIndex, kModeNames, IM_ARRAYSIZE(kModeNames));
 
             ImGui::Separator();

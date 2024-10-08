@@ -40,7 +40,9 @@ public:
         PrimitiveID,
         BarycentricCoordinate,
         Depth,
-        Albedo
+        Albedo,
+        BrixelizerGrad,
+        BrixelizerIterations
     };
 
     RenderPass(HdRenderIndex* pRenderIndex, const HdRprimCollection& collection, RenderDelegate* pRenderDelegate);
