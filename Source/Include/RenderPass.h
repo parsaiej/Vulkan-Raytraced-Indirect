@@ -93,6 +93,9 @@ private:
     std::vector<std::pair<FfxResource, Buffer>> m_FFXBrixelizerBufferPerCascadeAABBTree;
     std::vector<std::pair<FfxResource, Buffer>> m_FFXBrixelizerBufferPerCascadeBrickMap;
 
+    // Debug output.
+    FfxResource m_FFXBrixelizerDebugOutput;
+
     uint32_t             m_FFXDeviceScratchSizeBytes {};
     uint32_t             m_FFXBrixelizerCascadeCount {};
     FfxBrixelizerContext m_FFXBrixelizerContext {};

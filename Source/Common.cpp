@@ -48,11 +48,15 @@ bool CreateRenderingAttachments(RenderContext* pRenderContext, Image& colorAttac
             imageViewInfo.subresourceRange.aspectMask     = imageAspect;
         }
         Check(vkCreateImageView(pRenderContext->GetDevice(), &imageViewInfo, nullptr, &attachment.imageView), "Failed to create attachment view.");
+
+        // Keep the information.
+        attachment.imageInfo = imageInfo;
     };
 
     CreateAttachment(colorAttachment,
                      VK_FORMAT_R8G8B8A8_UNORM,
-                     VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_STORAGE_BIT,
+                     VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_STORAGE_BIT |
+                         VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT,
                      VK_IMAGE_ASPECT_COLOR_BIT);
     CreateAttachment(depthAttachment,
                      VK_FORMAT_D32_SFLOAT,
@@ -218,14 +222,14 @@ bool CreateVulkanLogicalDevice(const VkPhysicalDevice&         vkPhysicalDevice,
     // NOTE: Due to VUID-VkDeviceCreateInfo-pNext-02830 this may not be needed since it ships with Vulkan 1.2?
     // baryFeature.pNext         = &descriptorIndexing;
 
-    rayQueryFeature.pNext     = &baryFeature;
-    rtFeature.pNext           = &rayQueryFeature;
-    acFeature.pNext           = &rtFeature;
-    shaderObjectFeature.pNext = &acFeature;
-    vulkan13Features.pNext    = &shaderObjectFeature;
-    vulkan12Features.pNext    = &vulkan13Features;
-    vulkan11Features.pNext    = &vulkan12Features;
-    vulkan10Features.pNext    = &vulkan11Features;
+    // rayQueryFeature.pNext     = &baryFeature;
+    // rtFeature.pNext           = &rayQueryFeature;
+    // acFeature.pNext           = &rtFeature;
+    // shaderObjectFeature.pNext = &acFeature;
+    vulkan13Features.pNext = &shaderObjectFeature;
+    vulkan12Features.pNext = &vulkan13Features;
+    vulkan11Features.pNext = &vulkan12Features;
+    vulkan10Features.pNext = &vulkan11Features;
 
     // Query for supported features.
     vkGetPhysicalDeviceFeatures2(vkPhysicalDevice, &vulkan10Features);

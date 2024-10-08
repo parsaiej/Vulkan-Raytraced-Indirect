@@ -108,8 +108,10 @@ void Mesh::Sync(HdSceneDelegate* pSceneDelegate, HdRenderParam* pRenderParams, H
     // Get the world matrix.
     m_LocalToWorld = GfMatrix4f(pSceneDelegate->GetTransform(GetId()));
 
+    auto localToWorldTranspose = m_LocalToWorld.GetTranspose();
+
     // Copy everything except the final row.
-    memcpy(&m_LocalToWorld3x4, &m_LocalToWorld, sizeof(FfxFloat32x3x4));
+    memcpy(&m_LocalToWorld3x4, &localToWorldTranspose, sizeof(FfxFloat32x3x4));
 
     // Clear the dirty bits.
     *pDirtyBits &= ~HdChangeTracker::AllSceneDirtyBits;

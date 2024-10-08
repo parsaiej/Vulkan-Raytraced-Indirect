@@ -315,12 +315,26 @@ void RenderPass::CreateBrixelizerLatentDeviceResources()
                                                            ffxGetImageResourceDescriptionVK(m_FFXBrixelizerBufferSDFAtlas.second.image, *pImageInfo),
                                                            L"Brixelizer Distance Field Atlas");
 
+    VkCommandBuffer cmdBarrier = VK_NULL_HANDLE;
+    SingleShotCommandBegin(pRenderContext, cmdBarrier);
+
+    VulkanColorImageBarrier(cmdBarrier,
+                            m_FFXBrixelizerBufferSDFAtlas.second.image,
+                            VK_IMAGE_LAYOUT_UNDEFINED,
+                            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                            VK_ACCESS_2_NONE,
+                            VK_ACCESS_2_SHADER_READ_BIT,
+                            VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+                            VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT);
+
+    SingleShotCommandEnd(pRenderContext, cmdBarrier);
+
     // Brick AABBs
     // ----------------------------------
 
     VkBufferCreateInfo bufferInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
     bufferInfo.size               = FFX_BRIXELIZER_BRICK_AABBS_SIZE;
-    bufferInfo.usage              = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+    bufferInfo.usage              = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 
     Check(vmaCreateBuffer(pRenderContext->GetAllocator(),
                           &bufferInfo,
@@ -402,6 +416,14 @@ void RenderPass::CreateBrixelizerLatentDeviceResources()
 
         m_FFXBrixelizerBufferPerCascadeBrickMap.push_back(cascadeBrickMap);
     }
+
+    // Debug Output Target
+    // -----------------------------------
+
+    // Wrap the vulkan image into a FidelityFX generic abstraction.
+    m_FFXBrixelizerDebugOutput = ffxGetResourceVK(m_ColorAttachment.image,
+                                                  ffxGetImageResourceDescriptionVK(m_ColorAttachment.image, m_ColorAttachment.imageInfo),
+                                                  L"Brixelizer Debug Output");
 }
 
 // Render Pass Implementation
@@ -471,6 +493,8 @@ RenderPass::RenderPass(HdRenderIndex* pRenderIndex, const HdRprimCollection& col
         // Four cascades for now (maybe just one in our case?).
         brixelizerContextDesc.numCascades = m_FFXBrixelizerCascadeCount;
 
+        brixelizerContextDesc.flags = FFX_BRIXELIZER_CONTEXT_FLAG_ALL_DEBUG;
+
         // Configure per-cascade info.
         for (uint32_t cascadeIndex = 0U; cascadeIndex < brixelizerContextDesc.numCascades; cascadeIndex++)
         {
@@ -479,7 +503,7 @@ RenderPass::RenderPass(HdRenderIndex* pRenderIndex, const HdRprimCollection& col
             pCascadeDesc->flags = FFX_BRIXELIZER_CASCADE_STATIC;
 
             // Double the voxel size ever cascade.
-            pCascadeDesc->voxelSize = 4.0F * (static_cast<float>(cascadeIndex + 1) / static_cast<float>(brixelizerContextDesc.numCascades));
+            pCascadeDesc->voxelSize = 0.025F * (1.0F + static_cast<float>(cascadeIndex));
         }
     }
     Check(ffxBrixelizerContextCreate(&brixelizerContextDesc, &m_FFXBrixelizerContext), "Failed to intiliaze a Brixelizer context.");
@@ -886,6 +910,26 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
     {
         size_t requiredDeviceScratchSize = 0;
 
+        FfxBrixelizerDebugVisualizationDescription brixelizerDebugInfo = {};
+        {
+            brixelizerDebugInfo.commandList       = frameContext.pFrame->cmd;
+            brixelizerDebugInfo.debugState        = FfxBrixelizerTraceDebugModes::FFX_BRIXELIZER_TRACE_DEBUG_MODE_ITERATIONS;
+            brixelizerDebugInfo.startCascadeIndex = 0U;
+            brixelizerDebugInfo.endCascadeIndex   = m_FFXBrixelizerCascadeCount - 1;
+            brixelizerDebugInfo.sdfSolveEps       = 0.5F;
+            brixelizerDebugInfo.tMin              = 0.0F;
+            brixelizerDebugInfo.tMax              = 1000.0F;
+            brixelizerDebugInfo.output            = m_FFXBrixelizerDebugOutput;
+            brixelizerDebugInfo.renderWidth       = kWindowWidth;
+            brixelizerDebugInfo.renderHeight      = kWindowHeight;
+
+            auto matrivIV = GfMatrix4f(frameContext.pPassState->GetWorldToViewMatrix()).GetInverse();
+            auto matrixIP = GfMatrix4f(frameContext.pPassState->GetProjectionMatrix()).GetInverse();
+
+            memcpy(&brixelizerDebugInfo.inverseViewMatrix[0], matrivIV.data(), sizeof(matrivIV));
+            memcpy(&brixelizerDebugInfo.inverseProjectionMatrix[0], matrixIP.data(), sizeof(matrixIP));
+        }
+
         FfxBrixelizerUpdateDescription brixelizerUpdateDesc = {};
         {
             brixelizerUpdateDesc.frameIndex = static_cast<uint32_t>(frameContext.pFrame->frameIndex);
@@ -895,7 +939,14 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
             brixelizerUpdateDesc.maxBricksPerBake = 1 << 14;
             brixelizerUpdateDesc.triangleSwapSize = 300 * (1 << 20);
 
-            brixelizerUpdateDesc.outScratchBufferSize = &requiredDeviceScratchSize;
+            auto matrixV = GfMatrix4f(frameContext.pPassState->GetWorldToViewMatrix());
+
+            brixelizerUpdateDesc.sdfCenter[0] = matrixV[0][3]; // NOLINT
+            brixelizerUpdateDesc.sdfCenter[1] = matrixV[1][3]; // NOLINT
+            brixelizerUpdateDesc.sdfCenter[2] = matrixV[2][3]; // NOLINT
+
+            brixelizerUpdateDesc.outScratchBufferSize   = &requiredDeviceScratchSize;
+            brixelizerUpdateDesc.debugVisualizationDesc = &brixelizerDebugInfo;
 
             // Forward latent resources.
             brixelizerUpdateDesc.resources.sdfAtlas   = m_FFXBrixelizerBufferSDFAtlas.first;
@@ -917,12 +968,30 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
         // Verify that we have enough scratch memory, otherwise fatally crash the app.
         Check(requiredDeviceScratchSize < m_FFXDeviceScratchSizeBytes, "The Brixilizer scratch buffer is not large enough.");
 
+        VulkanColorImageBarrier(frameContext.pFrame->cmd,
+                                m_ColorAttachment.image,
+                                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+                                VK_ACCESS_2_SHADER_READ_BIT,
+                                VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                                VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT);
+
         // Dispatch the update.
         Check(ffxBrixelizerUpdate(&m_FFXBrixelizerContext,
                                   m_FFXBrixelizerBakedUpdateDesc.get(),
                                   m_FFXBrixelizerBufferDeviceScratch.first,
                                   frameContext.pFrame->cmd),
               "Failed to dispatch the Brixelizer update.");
+
+        VulkanColorImageBarrier(frameContext.pFrame->cmd,
+                                m_ColorAttachment.image,
+                                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                                VK_ACCESS_2_SHADER_READ_BIT,
+                                VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+                                VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT,
+                                VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT);
     }
 
     // 2) Rasterize V-Buffer
@@ -933,8 +1002,8 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
     //    TODO(parsa): Use https://github.com/zeux/meshoptimizer to produce optimized meshlets
     //                 that can be culled in a mesh shader.
 
-    if (!frameContext.pResourceRegistry->IsBusy())
-        VisibilityPassExecute(&frameContext);
+    // if (!frameContext.pResourceRegistry->IsBusy())
+    //     VisibilityPassExecute(&frameContext);
 
     // 3) Material Pass
 
@@ -944,8 +1013,8 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
 
     // 6) Debug
 
-    if (frameContext.debugMode != DebugMode::None)
-        DebugPassExecute(&frameContext);
+    // if (frameContext.debugMode != DebugMode::None)
+    //     DebugPassExecute(&frameContext);
 
     // Copy the internal color attachment to back buffer.
 
