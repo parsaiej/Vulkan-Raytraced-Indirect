@@ -172,8 +172,8 @@ int main()
                                        "C:\\Development\\hercules\\cockpit.usd",
                                        "C:\\Users\\parsa\\Downloads\\sibenik\\sibenik.usd" };
 
-    static int s_DebugModeIndex           = RenderPass::DebugMode::MeshID;
-    static int s_BrixelizerDebugModeIndex = FfxBrixelizerTraceDebugModes::FFX_BRIXELIZER_TRACE_DEBUG_MODE_GRAD;
+    static int s_DebugModeIndex           = RenderPass::DebugMode::Brixelizer;
+    static int s_BrixelizerDebugModeIndex = FfxBrixelizerTraceDebugModes::FFX_BRIXELIZER_TRACE_DEBUG_MODE_CASCADE_ID;
 
     std::jthread stageLoadingThread;
 

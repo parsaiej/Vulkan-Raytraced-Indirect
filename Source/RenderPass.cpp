@@ -431,7 +431,7 @@ void RenderPass::CreateBrixelizerLatentDeviceResources()
 
 RenderPass::RenderPass(HdRenderIndex* pRenderIndex, const HdRprimCollection& collection, RenderDelegate* pRenderDelegate) :
     HdRenderPass(pRenderIndex, collection), m_Owner(pRenderDelegate), m_FFXDeviceScratchSizeBytes(1024U * 1024 * 1024),
-    m_FFXBrixelizerCascadeCount(4U)
+    m_FFXBrixelizerCascadeCount(8U)
 {
     // Grab the render context.
     auto* pRenderContext = m_Owner->GetRenderContext();
@@ -504,7 +504,7 @@ RenderPass::RenderPass(HdRenderIndex* pRenderIndex, const HdRprimCollection& col
 
             // Double the voxel size ever cascade.
             // pCascadeDesc->voxelSize = 0.025F * (1.0F + static_cast<float>(cascadeIndex));
-            pCascadeDesc->voxelSize = 0.25F * (1.0F + static_cast<float>(cascadeIndex));
+            pCascadeDesc->voxelSize = 0.01F * (1.0F + static_cast<float>(cascadeIndex));
         }
     }
     Check(ffxBrixelizerContextCreate(&brixelizerContextDesc, &m_FFXBrixelizerContext), "Failed to intiliaze a Brixelizer context.");
@@ -523,19 +523,25 @@ RenderPass::~RenderPass()
 
     // Release brixelizer resources.
     {
-        // clang-format off
-
-        vmaDestroyImage(pRenderContext->GetAllocator(),  m_FFXBrixelizerBufferSDFAtlas.second.image,   m_FFXBrixelizerBufferSDFAtlas.second.imageAllocation);
-        vmaDestroyBuffer(pRenderContext->GetAllocator(), m_FFXBrixelizerBufferBrickAABB.second.buffer, m_FFXBrixelizerBufferBrickAABB.second.bufferAllocation);
-        vmaDestroyBuffer(pRenderContext->GetAllocator(), m_FFXBrixelizerBufferDeviceScratch.second.buffer, m_FFXBrixelizerBufferDeviceScratch.second.bufferAllocation);
+        vmaDestroyImage(pRenderContext->GetAllocator(),
+                        m_FFXBrixelizerBufferSDFAtlas.second.image,
+                        m_FFXBrixelizerBufferSDFAtlas.second.imageAllocation);
+        vmaDestroyBuffer(pRenderContext->GetAllocator(),
+                         m_FFXBrixelizerBufferBrickAABB.second.buffer,
+                         m_FFXBrixelizerBufferBrickAABB.second.bufferAllocation);
+        vmaDestroyBuffer(pRenderContext->GetAllocator(),
+                         m_FFXBrixelizerBufferDeviceScratch.second.buffer,
+                         m_FFXBrixelizerBufferDeviceScratch.second.bufferAllocation);
 
         for (uint32_t cascadeIndex = 0U; cascadeIndex < m_FFXBrixelizerCascadeCount; cascadeIndex++)
         {
-            vmaDestroyBuffer(pRenderContext->GetAllocator(), m_FFXBrixelizerBufferPerCascadeAABBTree[cascadeIndex].second.buffer, m_FFXBrixelizerBufferPerCascadeAABBTree[cascadeIndex].second.bufferAllocation);
-            vmaDestroyBuffer(pRenderContext->GetAllocator(), m_FFXBrixelizerBufferPerCascadeBrickMap[cascadeIndex].second.buffer, m_FFXBrixelizerBufferPerCascadeBrickMap[cascadeIndex].second.bufferAllocation);
+            vmaDestroyBuffer(pRenderContext->GetAllocator(),
+                             m_FFXBrixelizerBufferPerCascadeAABBTree[cascadeIndex].second.buffer,
+                             m_FFXBrixelizerBufferPerCascadeAABBTree[cascadeIndex].second.bufferAllocation);
+            vmaDestroyBuffer(pRenderContext->GetAllocator(),
+                             m_FFXBrixelizerBufferPerCascadeBrickMap[cascadeIndex].second.buffer,
+                             m_FFXBrixelizerBufferPerCascadeBrickMap[cascadeIndex].second.bufferAllocation);
         }
-
-        // clang-format on
     }
 
     Check(ffxBrixelizerContextDestroy(&m_FFXBrixelizerContext), "Failed to destroy Brixelizer context.");
@@ -925,9 +931,9 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
 
             auto matrixV = GfMatrix4f(frameContext.pPassState->GetWorldToViewMatrix());
 
-            brixelizerUpdateDesc.sdfCenter[0] = matrixV[0][3]; // NOLINT
-            brixelizerUpdateDesc.sdfCenter[1] = matrixV[1][3]; // NOLINT
-            brixelizerUpdateDesc.sdfCenter[2] = matrixV[2][3]; // NOLINT
+            brixelizerUpdateDesc.sdfCenter[0] = matrixV[3][0]; // NOLINT
+            brixelizerUpdateDesc.sdfCenter[1] = matrixV[3][1]; // NOLINT
+            brixelizerUpdateDesc.sdfCenter[2] = matrixV[3][2]; // NOLINT
 
             brixelizerUpdateDesc.outScratchBufferSize = &requiredDeviceScratchSize;
 
@@ -1011,7 +1017,7 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
     //    TODO(parsa): Use https://github.com/zeux/meshoptimizer to produce optimized meshlets
     //                 that can be culled in a mesh shader.
 
-    if (!frameContext.pResourceRegistry->IsBusy())
+    if (!frameContext.pResourceRegistry->IsBusy() && frameContext.debugMode != DebugMode::Brixelizer)
         VisibilityPassExecute(&frameContext);
 
     // 3) Material Pass
