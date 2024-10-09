@@ -15,6 +15,7 @@ const TfTokenVector kSupportedBPrimTypes = {};                                  
 const TfToken kTokenRenderContextDriver = TfToken("RenderContextDriver");
 const TfToken kTokenCurrenFrameParams   = TfToken("CurrentFrameParams");
 const TfToken kTokenDebugMode           = TfToken("DebugMode");
+const TfToken kTokenBrixelizerDebugMode = TfToken("DebugModeBrixelier");
 
 class RenderDelegate : public HdRenderDelegate
 {

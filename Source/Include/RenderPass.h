@@ -41,8 +41,7 @@ public:
         BarycentricCoordinate,
         Depth,
         Albedo,
-        BrixelizerGrad,
-        BrixelizerIterations
+        Brixelizer
     };
 
     RenderPass(HdRenderIndex* pRenderIndex, const HdRprimCollection& collection, RenderDelegate* pRenderDelegate);
@@ -59,11 +58,12 @@ private:
 
     struct FrameContext
     {
-        RenderContext*     pRenderContext;
-        FrameParams*       pFrame;
-        HdRenderPassState* pPassState;
-        ResourceRegistry*  pResourceRegistry;
-        DebugMode          debugMode;
+        RenderContext*               pRenderContext;
+        FrameParams*                 pFrame;
+        HdRenderPassState*           pPassState;
+        ResourceRegistry*            pResourceRegistry;
+        DebugMode                    debugMode;
+        FfxBrixelizerTraceDebugModes debugModeBrixelizer;
     };
 
     RenderDelegate* m_Owner;

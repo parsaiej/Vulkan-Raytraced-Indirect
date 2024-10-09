@@ -59,6 +59,19 @@ void LoadStage(HdRenderIndex* pRenderIndex, std::unique_ptr<UsdImagingDelegate>&
     s_StageLoaded.store(true);
 }
 
+template <typename T>
+void EnumDropdown(const char* name, int* selectedEnumIndex)
+{
+    constexpr auto enumNames = magic_enum::enum_names<T>();
+
+    std::vector<const char*> enumNameStrings(enumNames.size());
+
+    for (uint32_t enumIndex = 0U; enumIndex < enumNames.size(); enumIndex++)
+        enumNameStrings[enumIndex] = enumNames[enumIndex].data();
+
+    ImGui::Combo(name, selectedEnumIndex, enumNameStrings.data(), static_cast<int>(enumNameStrings.size()));
+}
+
 // Executable implementation.
 // ---------------------------------------------------------
 
@@ -156,9 +169,11 @@ int main()
 
     static int  s_DebugSceneIndex  = 0U;
     const char* kDebugScenePaths[] = { "C:\\Development\\OpenUSD_Install_Release\\resources\\flattened_chess_set.usd",
-                                       "C:\\Development\\hercules\\cockpit.usd" };
+                                       "C:\\Development\\hercules\\cockpit.usd",
+                                       "C:\\Users\\parsa\\Downloads\\sibenik\\sibenik.usd" };
 
-    static int s_DebugModeIndex = RenderPass::DebugMode::BarycentricCoordinate; // NOLINT
+    static int s_DebugModeIndex           = RenderPass::DebugMode::MeshID;
+    static int s_BrixelizerDebugModeIndex = FfxBrixelizerTraceDebugModes::FFX_BRIXELIZER_TRACE_DEBUG_MODE_GRAD;
 
     std::jthread stageLoadingThread;
 
@@ -191,12 +206,12 @@ int main()
 
             ImGui::SameLine();
 
-            const char* kModeNames[] = { "None",  "MeshID", "PrimitiveID",         "BarycentricCoordinate",
-                                         "Depth", "Albedo", "Brixelizer Gradient", "Brixelizer Iterations" };
-
-            ImGui::Combo("Debug", &s_DebugModeIndex, kModeNames, IM_ARRAYSIZE(kModeNames));
+            EnumDropdown<RenderPass::DebugMode>("Debug", &s_DebugModeIndex);
 
             ImGui::Separator();
+
+            if (static_cast<RenderPass::DebugMode>(s_DebugModeIndex) == RenderPass::Brixelizer)
+                EnumDropdown<FfxBrixelizerTraceDebugModes>("Brixelizer Debug", &s_BrixelizerDebugModeIndex);
 
             if (ImGui::BeginChild("LogSubWindow", ImVec2(600, 400), 1, ImGuiWindowFlags_HorizontalScrollbar))
             {
@@ -238,6 +253,9 @@ int main()
 
         // Also forward the debug mode.
         pRenderDelegate->SetRenderSetting(kTokenDebugMode, VtValue(&s_DebugModeIndex));
+
+        // And the brixelizer debug mode.
+        pRenderDelegate->SetRenderSetting(kTokenBrixelizerDebugMode, VtValue(&s_BrixelizerDebugModeIndex));
 
 #ifdef USE_FREE_CAMERA
         freeCamera.Update(static_cast<float>(frameParams.deltaTime));

@@ -25,6 +25,8 @@
 #include <stb_image.h>
 #include <tiny_obj_loader.h>
 
+#include <magic_enum/magic_enum.hpp>
+
 #include <fstream>
 #include <intrin.h>
 #include <filesystem>

@@ -53,7 +53,7 @@ endif()
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     set(FFX_BACKEND_LIB    ${CMAKE_SOURCE_DIR}/External/FidelityFX/bin/debug/ffx_backend_vk_x64d.lib)
     set(FFX_BRIXELIZER_LIB ${CMAKE_SOURCE_DIR}/External/FidelityFX/bin/debug/ffx_brixelizer_x64d.lib)
-elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
+else()
     set(FFX_BACKEND_LIB    ${CMAKE_SOURCE_DIR}/External/FidelityFX/bin/release/ffx_backend_vk_x64.lib)
     set(FFX_BRIXELIZER_LIB ${CMAKE_SOURCE_DIR}/External/FidelityFX/bin/release/ffx_brixelizer_x64.lib)
 endif()
@@ -125,6 +125,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${PXR_INCLUDE_DIR}
     ${IMGUI_INC}
     External/FidelityFX/include
+    External/magic_enum/include
 )
 
 # Link

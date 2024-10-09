@@ -503,7 +503,8 @@ RenderPass::RenderPass(HdRenderIndex* pRenderIndex, const HdRprimCollection& col
             pCascadeDesc->flags = FFX_BRIXELIZER_CASCADE_STATIC;
 
             // Double the voxel size ever cascade.
-            pCascadeDesc->voxelSize = 0.025F * (1.0F + static_cast<float>(cascadeIndex));
+            // pCascadeDesc->voxelSize = 0.025F * (1.0F + static_cast<float>(cascadeIndex));
+            pCascadeDesc->voxelSize = 0.25F * (1.0F + static_cast<float>(cascadeIndex));
         }
     }
     Check(ffxBrixelizerContextCreate(&brixelizerContextDesc, &m_FFXBrixelizerContext), "Failed to intiliaze a Brixelizer context.");
@@ -884,11 +885,14 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
 {
     FrameContext frameContext {};
     {
-        frameContext.pRenderContext    = m_Owner->GetRenderContext();
-        frameContext.pFrame            = m_Owner->GetRenderSetting(kTokenCurrenFrameParams).UncheckedGet<FrameParams*>();
-        frameContext.debugMode         = static_cast<DebugMode>(*m_Owner->GetRenderSetting(kTokenDebugMode).UncheckedGet<int*>());
-        frameContext.pPassState        = renderPassState.get();
-        frameContext.pResourceRegistry = std::static_pointer_cast<ResourceRegistry>(m_Owner->GetResourceRegistry()).get();
+        // clang-format off
+        frameContext.pRenderContext      = m_Owner->GetRenderContext();
+        frameContext.pFrame              = m_Owner->GetRenderSetting(kTokenCurrenFrameParams).UncheckedGet<FrameParams*>();
+        frameContext.debugMode           = static_cast<DebugMode>(*m_Owner->GetRenderSetting(kTokenDebugMode).UncheckedGet<int*>());
+        frameContext.debugModeBrixelizer = static_cast<FfxBrixelizerTraceDebugModes>(*m_Owner->GetRenderSetting(kTokenBrixelizerDebugMode).UncheckedGet<int*>());
+        frameContext.pPassState          = renderPassState.get();
+        frameContext.pResourceRegistry   = std::static_pointer_cast<ResourceRegistry>(m_Owner->GetResourceRegistry()).get();
+        // clang-format on
     };
 
     VulkanColorImageBarrier(frameContext.pFrame->cmd,
@@ -943,14 +947,10 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
 
         FfxBrixelizerDebugVisualizationDescription brixelizerDebugInfo = {};
 
-        if (frameContext.debugMode >= DebugMode::BrixelizerGrad)
+        if (frameContext.debugMode == DebugMode::Brixelizer)
         {
-            brixelizerDebugInfo.commandList = frameContext.pFrame->cmd;
-
-            brixelizerDebugInfo.debugState = frameContext.debugMode != DebugMode::BrixelizerGrad
-                                                 ? FfxBrixelizerTraceDebugModes::FFX_BRIXELIZER_TRACE_DEBUG_MODE_ITERATIONS
-                                                 : FfxBrixelizerTraceDebugModes::FFX_BRIXELIZER_TRACE_DEBUG_MODE_GRAD;
-
+            brixelizerDebugInfo.commandList       = frameContext.pFrame->cmd;
+            brixelizerDebugInfo.debugState        = frameContext.debugModeBrixelizer;
             brixelizerDebugInfo.startCascadeIndex = 0U;
             brixelizerDebugInfo.endCascadeIndex   = m_FFXBrixelizerCascadeCount - 1;
             brixelizerDebugInfo.sdfSolveEps       = 0.5F;
@@ -1022,7 +1022,7 @@ void RenderPass::_Execute(const HdRenderPassStateSharedPtr& renderPassState, con
 
     // 6) Debug (non-Brixelizer)
 
-    if (frameContext.debugMode > DebugMode::None && frameContext.debugMode < DebugMode::BrixelizerGrad)
+    if (frameContext.debugMode != DebugMode::None && frameContext.debugMode != DebugMode::Brixelizer)
         DebugPassExecute(&frameContext);
 
     // Copy the internal color attachment to back buffer.

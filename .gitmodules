@@ -10,3 +10,6 @@
 [submodule "External/meshoptimizer"]
 	path = External/meshoptimizer
 	url = git@github.com:zeux/meshoptimizer.git
+[submodule "External/magic_enum"]
+	path = External/magic_enum
+	url = git@github.com:Neargye/magic_enum.git
